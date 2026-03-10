@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ report.title }}</title>
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Georgia, "Times New Roman", serif;
+      background: #f4f4f0;
+      color: #1a1a1a;
+      padding: 2rem 1rem;
+    }
+
+    .page {
+      max-width: 860px;
+      margin: 0 auto;
+      background: #ffffff;
+      border: 1px solid #d4cfc7;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Header */
+    .report-header {
+      background: #1c2b3a;
+      color: #fff;
+      padding: 2rem 2.5rem 1.5rem;
+      border-bottom: 4px solid #c8a84b;
+    }
+
+    .report-header .label {
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 0.72rem;
+      color: #9db3c8;
+      font-family: Arial, sans-serif;
+      margin-bottom: 0.4rem;
+    }
+
+    .report-header h1 {
+      font-size: 1.65rem;
+      font-weight: normal;
+      line-height: 1.3;
+    }
+
+    .report-header .meta {
+      margin-top: 1rem;
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+      font-family: Arial, sans-serif;
+      font-size: 0.82rem;
+      color: #b8ccd9;
+    }
+
+    .report-header .meta span strong {
+      color: #dce8f0;
+    }
+
+    /* Body */
+    .report-body {
+      padding: 2rem 2.5rem;
+    }
+
+    /* Company Block */
+    .company-block {
+      background: #f8f7f3;
+      border: 1px solid #e2ddd5;
+      border-left: 4px solid #c8a84b;
+      padding: 1rem 1.25rem;
+      margin-bottom: 2rem;
+      font-family: Arial, sans-serif;
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .company-block .field label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #888;
+      display: block;
+    }
+
+    .company-block .field span {
+      font-size: 1rem;
+      font-weight: bold;
+      color: #1c2b3a;
+    }
+
+    /* Sections */
+    section {
+      margin-bottom: 2rem;
+    }
+
+    section h2 {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #888;
+      font-family: Arial, sans-serif;
+      border-bottom: 1px solid #e2ddd5;
+      padding-bottom: 0.4rem;
+      margin-bottom: 0.9rem;
+    }
+
+    section p {
+      line-height: 1.7;
+      font-size: 0.97rem;
+      color: #2a2a2a;
+    }
+
+    /* Lists */
+    .point-list {
+      list-style: none;
+      padding: 0;
+    }
+
+    .point-list li {
+      display: flex;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #f0ede8;
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+
+    .point-list li:last-child {
+      border-bottom: none;
+    }
+
+    .point-list li::before {
+      content: "▸";
+      color: #c8a84b;
+      flex-shrink: 0;
+      margin-top: 0.1rem;
+    }
+
+    .risk-list li::before {
+      content: "▲";
+      color: #c0392b;
+    }
+
+    /* Recommendation */
+    .recommendation-box {
+      background: #eef6ee;
+      border: 1px solid #b2d8b2;
+      border-left: 4px solid #2ecc71;
+      padding: 1rem 1.25rem;
+      font-size: 0.97rem;
+      line-height: 1.7;
+      color: #1a3a1a;
+    }
+
+
+
+    /* Footer */
+    .report-footer {
+      background: #f4f4f0;
+      border-top: 1px solid #d4cfc7;
+      padding: 1rem 2.5rem;
+      font-family: Arial, sans-serif;
+      font-size: 0.75rem;
+      color: #999;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+  </style>
+  {% if report.has_metrics %}
+  <style>
+    /* Metrics Table */
+    .metrics-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: Arial, sans-serif;
+      font-size: 0.9rem;
+    }
+
+    .metrics-table th {
+      text-align: left;
+      background: #1c2b3a;
+      color: #fff;
+      padding: 0.55rem 1rem;
+      font-weight: normal;
+      letter-spacing: 0.05em;
+    }
+
+    .metrics-table td {
+      padding: 0.55rem 1rem;
+      border-bottom: 1px solid #e8e4de;
+    }
+
+    .metrics-table tr:nth-child(even) td {
+      background: #f8f7f3;
+    }
+
+    .metrics-table td:last-child {
+      font-weight: bold;
+      color: #1c2b3a;
+    }
+  </style>
+  {% endif %}
+</head>
+
+<body>
+  <div class="page">
+
+    <header class="report-header">
+      <div class="label">Internal Briefing Report</div>
+      <h1>{{ report.title | e }}</h1>
+      <div class="meta">
+        <span><strong>Analyst:</strong> {{ report.analyst_name | e }}</span>
+        <span><strong>Sector:</strong> {{ report.sector | e }}</span>
+        <span><strong>Generated:</strong> {{ report.generated_at | e }}</span>
+      </div>
+    </header>
+
+    <div class="report-body">
+
+      <!-- Company Info Block -->
+      <div class="company-block">
+        <div class="field">
+          <label>Company</label>
+          <span>{{ report.company_name | e }}</span>
+        </div>
+        <div class="field">
+          <label>Ticker</label>
+          <span>{{ report.ticker | e }}</span>
+        </div>
+        <div class="field">
+          <label>Sector</label>
+          <span>{{ report.sector | e }}</span>
+        </div>
+      </div>
+
+      <!-- Executive Summary -->
+      <section>
+        <h2>Executive Summary</h2>
+        <p>{{ report.summary | e }}</p>
+      </section>
+
+      <!-- Key Points -->
+      <section>
+        <h2>Key Points</h2>
+        <ul class="point-list">
+          {% for point in report.key_points %}
+          <li>{{ point | e }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+
+      <!-- Risks -->
+      <section>
+        <h2>Risks</h2>
+        <ul class="point-list risk-list">
+          {% for risk in report.risks %}
+          <li>{{ risk | e }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+
+      <!-- Recommendation -->
+      <section>
+        <h2>Recommendation</h2>
+        <div class="recommendation-box">{{ report.recommendation | e }}</div>
+      </section>
+
+      <!-- Metrics (optional) -->
+      {% if report.has_metrics %}
+      <section>
+        <h2>Key Metrics</h2>
+        <table class="metrics-table">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for metric in report.metrics %}
+            <tr>
+              <td>{{ metric.name | e }}</td>
+              <td>{{ metric.value | e }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      {% endif %}
+
+    </div><!-- /.report-body -->
+
+    <footer class="report-footer">
+      <span>This document is for internal use only.</span>
+      <span>Report generated: {{ report.generated_at | e }}</span>
+    </footer>
+
+  </div><!-- /.page -->
+</body>
+
+</html>
