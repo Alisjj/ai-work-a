@@ -1,185 +1,40 @@
-# Backend Engineering Assessment
+# Backend Engineering Assessment Starter
 
-Two standalone services in one repository:
+This repository is a standalone starter for the backend engineering take-home assessment.
+It contains two independent services in a shared mono-repo:
 
-| Service | Stack | Port |
-|---------|-------|------|
-| `python-service` | FastAPI + PostgreSQL + Alembic | 8000 |
-| `ts-service` | NestJS + PostgreSQL + Bull/Redis | 3000 |
+- `python-service/` (InsightOps): FastAPI + SQLAlchemy + manual SQL migrations
+- `ts-service/` (TalentFlow): NestJS + TypeORM
 
----
+The repository is intentionally incomplete for assessment features. Candidates should build within the existing structure and patterns.
 
 ## Prerequisites
 
-- Python 3.11+
-- Node.js 20+
-- PostgreSQL 14+
-- Redis 7+ (for the NestJS queue)
+- Docker
+- Python 3.12
+- Node.js 22+
+- npm
 
----
+## Start Postgres
 
-## Part A — Python Service (FastAPI)
-
-### Setup
+From the repository root:
 
 ```bash
-cd python-service
-
-# Create and activate a virtual environment
-python -m venv .venv
-source .venv/bin/activate       # Windows: .venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env and set DATABASE_URL if needed
+docker compose up -d postgres
 ```
 
-### Run migrations
+This starts PostgreSQL on `localhost:5432` with:
 
-```bash
-# Make sure the database exists first:
-createdb briefings_db    # or use psql/pgAdmin
+- database: `assessment_db`
+- user: `assessment_user`
+- password: `assessment_pass`
 
-alembic upgrade head
-```
+## Service Guides
 
-### Run the service
+- Python service setup and commands: [python-service/README.md](python-service/README.md)
+- TypeScript service setup and commands: [ts-service/README.md](ts-service/README.md)
 
-```bash
-uvicorn app.main:app --reload --port 8000
-```
+## Notes
 
-API docs available at: http://localhost:8000/docs
-
-### Run tests
-
-The test suite uses Testcontainers to spin up a real PostgreSQL instance. Docker must be running.
-
-```bash
-pytest
-```
-
-### API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/briefings` | Create a new briefing |
-| GET | `/briefings/{id}` | Retrieve a briefing |
-| POST | `/briefings/{id}/generate` | Generate the report |
-| GET | `/briefings/{id}/html` | Fetch the rendered HTML report |
-
----
-
-## Part B — NestJS Service
-
-### Setup
-
-```bash
-cd ts-service
-
-npm install
-
-# Configure environment
-cp .env.example .env
-# Edit .env and fill in:
-#   DATABASE_URL  — your Postgres connection string
-#   REDIS_URL     — your Redis connection string
-#   GEMINI_API_KEY — your Google AI Studio API key
-```
-
-### Get a Gemini API key
-
-1. Go to https://aistudio.google.com/app/apikey
-2. Create a new API key (free tier is sufficient)
-3. Add it to your `.env` as `GEMINI_API_KEY`
-
-### Run migrations
-
-```bash
-# Make sure the database exists:
-createdb candidates_db
-
-npm run migration:run
-```
-
-### Run the service
-
-```bash
-npm run start:dev
-```
-
-The service listens on http://localhost:3000
-
-### Run tests
-
-Tests use InMemory repositories and a fake provider — no live API calls, no running Postgres or Redis needed.
-
-```bash
-npm test
-```
-
-### API Endpoints
-
-All endpoints require the `x-workspace-id` header (simulated auth — see NOTES.md).
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/candidates/:candidateId/documents` | Upload a candidate document |
-| POST | `/candidates/:candidateId/summaries/generate` | Request async summary generation |
-| GET | `/candidates/:candidateId/summaries` | List summaries for a candidate |
-| GET | `/candidates/:candidateId/summaries/:summaryId` | Get a specific summary |
-
-### Example request
-
-```bash
-# Upload a document
-curl -X POST http://localhost:3000/candidates/<candidateId>/documents \
-  -H "Content-Type: application/json" \
-  -H "x-workspace-id: <your-workspace-id>" \
-  -d '{
-    "documentType": "resume",
-    "fileName": "alice-resume.pdf",
-    "rawText": "Alice Smith — Senior Software Engineer..."
-  }'
-
-# Request summary generation (returns 202 Accepted)
-curl -X POST http://localhost:3000/candidates/<candidateId>/summaries/generate \
-  -H "x-workspace-id: <your-workspace-id>"
-
-# Poll for results
-curl http://localhost:3000/candidates/<candidateId>/summaries \
-  -H "x-workspace-id: <your-workspace-id>"
-```
-
----
-
-## Database Setup (Quick Reference)
-
-```bash
-# Create both databases
-createdb briefings_db
-createdb candidates_db
-
-# Run both migrations
-cd python-service && alembic upgrade head
-cd ../ts-service && npm run migration:run
-```
-
----
-
-## Seeding Test Data (NestJS)
-
-You will need a workspace and candidate in your database before calling the API.
-Insert them directly or use psql:
-
-```sql
--- Connect to candidates_db
-INSERT INTO workspaces (id, name) VALUES ('ws-00000000-0000-0000-0000-000000000001', 'Acme Recruiting');
-INSERT INTO candidates (id, workspace_id, name, email)
-VALUES ('cand-00000000-0000-0000-0000-000000000001', 'ws-00000000-0000-0000-0000-000000000001', 'Alice Smith', 'alice@example.com');
-```
-
-Then use `x-workspace-id: ws-00000000-0000-0000-0000-000000000001` in your requests.
+- Keep your solution focused on the assessment tasks.
+- Do not replace the project structure with a different architecture.

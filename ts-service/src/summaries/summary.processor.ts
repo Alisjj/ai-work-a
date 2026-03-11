@@ -3,19 +3,10 @@ import { Inject, Logger } from '@nestjs/common';
 import { Job } from 'bull';
 
 import { SUMMARY_QUEUE, SUMMARY_JOB, SummaryJobPayload } from './queue.constants';
-import {
-  SUMMARIZATION_PROVIDER,
-  SummarizationProvider,
-} from '../summarization/summarization.interface';
-import {
-  DOCUMENT_REPOSITORY,
-  SUMMARY_REPOSITORY,
-  IDocumentRepository,
-  ISummaryRepository,
-  DocumentRecord,
-  SummaryStatus,
-  RecommendedDecision,
-} from '../common/repositories/interfaces';
+import { SUMMARIZATION_PROVIDER, SummarizationProvider } from '../llm/summarization-provider.interface';
+import { DOCUMENT_REPOSITORY, IDocumentRepository, DocumentRecord } from '../common/repositories/document.repository';
+import { SUMMARY_REPOSITORY, ISummaryRepository } from '../common/repositories/summary.repository';
+import { SummaryStatus, RecommendedDecision } from '../entities/candidate-summary.entity';
 
 /**
  * SummaryProcessor - Handles background job processing for summary generation
@@ -31,7 +22,7 @@ export class SummaryProcessor {
     @Inject(SUMMARY_REPOSITORY)
     private readonly summaryRepo: ISummaryRepository,
     @Inject(DOCUMENT_REPOSITORY)
-    private readonly documentRepo: IDocumentRepository
+    private readonly documentRepo: IDocumentRepository,
   ) {}
 
   @Process(SUMMARY_JOB.GENERATE)
@@ -82,7 +73,7 @@ export class SummaryProcessor {
       this.logger.error(`Summary ${summaryId} failed: ${message}`);
       await this.summaryRepo.update(summaryId, {
         status: SummaryStatus.FAILED,
-        errorMessage: message ?? 'Unknown error',
+        errorMessage: message,
       });
     }
   }

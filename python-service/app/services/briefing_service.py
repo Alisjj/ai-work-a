@@ -8,8 +8,6 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import BriefingNotFoundError, BriefingNotGeneratedError
 from app.models.briefing import Briefing, BriefingMetric, BriefingPoint, PointType
-from app.repositories.briefing import BriefingRepository
-from app.repositories.interfaces import IBriefingRepository
 from app.schemas.briefing import (
     BriefingCreate,
     BriefingOut,
@@ -21,11 +19,6 @@ from app.schemas.briefing import (
 )
 
 # ---------- Helpers ----------
-
-
-def _get_repo(db: Session) -> IBriefingRepository:
-    """Create a repository instance for the given session."""
-    return BriefingRepository(db)
 
 
 def _group_points_by_type(
@@ -106,14 +99,18 @@ def list_briefings(
     db: Session, pagination: PaginationParams
 ) -> PaginatedResponse[BriefingOut]:
     """List briefings with pagination."""
-    repo = _get_repo(db)
-
     # Get total count
-    total_items = repo.count()
+    total_items = db.query(Briefing).count()
     total_pages = (total_items + pagination.page_size - 1) // pagination.page_size
 
     # Get paginated items
-    briefings = repo.list_paginated(pagination.offset, pagination.page_size)
+    briefings = (
+        db.query(Briefing)
+        .order_by(Briefing.created_at.desc())
+        .offset(pagination.offset)
+        .limit(pagination.page_size)
+        .all()
+    )
 
     items = [_build_briefing_out(b) for b in briefings]
 
@@ -131,8 +128,7 @@ def list_briefings(
 
 
 def create_briefing(db: Session, payload: BriefingCreate) -> BriefingOut:
-    repo = _get_repo(db)
-
+    """Create a new briefing with points and metrics."""
     briefing = Briefing(
         company_name=payload.company_name,
         ticker=payload.ticker,
@@ -141,11 +137,11 @@ def create_briefing(db: Session, payload: BriefingCreate) -> BriefingOut:
         summary=payload.summary,
         recommendation=payload.recommendation,
     )
-    repo.add(briefing)
+    db.add(briefing)
     db.flush()  # get ID before inserting children
 
     for i, text in enumerate(payload.key_points):
-        repo.add_point(BriefingPoint(
+        db.add(BriefingPoint(
             briefing_id=briefing.id,
             point_type=PointType.KEY_POINT,
             content=text,
@@ -153,7 +149,7 @@ def create_briefing(db: Session, payload: BriefingCreate) -> BriefingOut:
         ))
 
     for i, text in enumerate(payload.risks):
-        repo.add_point(BriefingPoint(
+        db.add(BriefingPoint(
             briefing_id=briefing.id,
             point_type=PointType.RISK,
             content=text,
@@ -162,65 +158,56 @@ def create_briefing(db: Session, payload: BriefingCreate) -> BriefingOut:
 
     if payload.metrics:
         for i, metric in enumerate(payload.metrics):
-            repo.add_metric(BriefingMetric(
+            db.add(BriefingMetric(
                 briefing_id=briefing.id,
                 name=metric.name.strip(),
                 value=metric.value.strip(),
                 display_order=i,
             ))
 
-    repo.commit()
-    repo.refresh(briefing)
-    repo.expire(briefing)  # force reload of relationships
+    db.commit()
+    db.refresh(briefing)
 
-    briefing = repo.get(briefing.id)
+    # Reload with relationships
+    briefing = db.query(Briefing).filter(Briefing.id == briefing.id).first()
     if briefing is None:
-        raise RuntimeError("Briefing disappeared after commit")  # Should not happen
+        raise RuntimeError("Briefing disappeared after commit")
     return _build_briefing_out(briefing)
 
 
 def get_briefing(db: Session, briefing_id: UUID) -> BriefingOut:
-    repo = _get_repo(db)
-    briefing = repo.get(briefing_id)
+    """Get a briefing by ID."""
+    briefing = (
+        db.query(Briefing)
+        .filter(Briefing.id == briefing_id)
+        .first()
+    )
     if not briefing:
         raise BriefingNotFoundError(str(briefing_id))
     return _build_briefing_out(briefing)
 
 
 def generate_briefing(db: Session, briefing_id: UUID) -> Briefing:
-    repo = _get_repo(db)
-    briefing = repo.get(briefing_id)
+    """Mark a briefing as generated."""
+    briefing = db.query(Briefing).filter(Briefing.id == briefing_id).first()
     if not briefing:
         raise BriefingNotFoundError(str(briefing_id))
     briefing.is_generated = True
     briefing.generated_at = datetime.now(timezone.utc)
-    repo.commit()
-    repo.refresh(briefing)
-    briefing = repo.get(briefing_id)
-    if briefing is None:
-        raise BriefingNotFoundError(str(briefing_id))
+    db.commit()
+    db.refresh(briefing)
     return briefing
 
 
 def generate_briefing_out(db: Session, briefing_id: UUID) -> BriefingOut:
     """Generate briefing and return the output schema directly."""
-    repo = _get_repo(db)
-    briefing = repo.get(briefing_id)
-    if not briefing:
-        raise BriefingNotFoundError(str(briefing_id))
-    briefing.is_generated = True
-    briefing.generated_at = datetime.now(timezone.utc)
-    repo.commit()
-    repo.refresh(briefing)
-    briefing = repo.get(briefing_id)
-    if briefing is None:
-        raise BriefingNotFoundError(str(briefing_id))
+    briefing = generate_briefing(db, briefing_id)
     return _build_briefing_out(briefing)
 
 
 def get_report_view_model(db: Session, briefing_id: UUID) -> ReportViewModel:
-    repo = _get_repo(db)
-    briefing = repo.get(briefing_id)
+    """Get a report view model for template rendering."""
+    briefing = db.query(Briefing).filter(Briefing.id == briefing_id).first()
     if not briefing:
         raise BriefingNotFoundError(str(briefing_id))
     if not briefing.is_generated:

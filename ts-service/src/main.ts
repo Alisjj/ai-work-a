@@ -1,32 +1,28 @@
-import 'reflect-metadata';
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
-import { Logger } from '@nestjs/common';
+
 import { AppModule } from './app.module';
 
-async function bootstrap() {
+async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
-  const logger = new Logger('Bootstrap');
 
-  // Enable CORS
-  const allowedOrigins = configService.get<string>('ALLOWED_ORIGINS');
-  if (allowedOrigins) {
-    app.enableCors({
-      origin: allowedOrigins.split(',').map(origin => origin.trim()),
-      credentials: true,
-    });
-  } else {
-    app.enableCors();
-  }
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    }),
+  );
 
-  // Set global API prefix
-  app.setGlobalPrefix('api');
+  // Enable CORS for development
+  app.enableCors();
 
-  const port = configService.get<number>('PORT') || 3000;
+  const port = Number(configService.get('PORT') ?? 3000);
   await app.listen(port);
-  logger.log(`🚀 Server running on port ${port}`);
-  logger.log(`📍 Health check: http://localhost:${port}/health`);
+  console.log(`🚀 Server running on port ${port}`);
+  console.log(`📍 Health check: http://localhost:${port}/health`);
 }
 
 bootstrap();

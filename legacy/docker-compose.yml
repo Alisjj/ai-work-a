@@ -1,0 +1,171 @@
+services:
+  # ============================================================================
+  # INFRASTRUCTURE
+  # ============================================================================
+
+  db:
+    image: postgres:15-alpine
+    container_name: ai-work-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-work-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-work-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-work-network
+
+  # ============================================================================
+  # PYTHON SERVICE
+  # ============================================================================
+
+  python:
+    build:
+      context: ./python-service
+      dockerfile: Dockerfile
+      target: ${PYTHON_TARGET:-production}
+    container_name: python-app
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/briefings_db
+      API_KEY: ${API_KEY:-change-me}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./python-service:/app
+      - /app/__pycache__
+    networks:
+      - ai-work-network
+    profiles:
+      - python
+      - all
+
+  python-test:
+    build:
+      context: ./python-service
+      dockerfile: Dockerfile
+      target: development
+    container_name: python-test
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/briefings_test
+      API_KEY: test-api-key
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./python-service:/app
+    command: ["python", "-m", "pytest", "tests/", "-v", "--tb=short"]
+    networks:
+      - ai-work-network
+    profiles:
+      - python-test
+
+  # ============================================================================
+  # TYPESCRIPT SERVICE
+  # ============================================================================
+
+  ts:
+    build:
+      context: ./ts-service
+      dockerfile: Dockerfile
+      target: ${TS_TARGET:-production}
+    container_name: ts-app
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/candidates_db
+      REDIS_URL: redis://redis:6379
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./ts-service:/app
+      - /app/node_modules
+    networks:
+      - ai-work-network
+    profiles:
+      - ts
+      - all
+
+  ts-test:
+    build:
+      context: ./ts-service
+      dockerfile: Dockerfile
+      target: development
+    container_name: ts-test
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/candidates_test
+      REDIS_URL: redis://redis:6379
+      GEMINI_API_KEY: test-api-key
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./ts-service:/app
+      - /app/node_modules
+    command: ["yarn", "test"]
+    networks:
+      - ai-work-network
+    profiles:
+      - ts-test
+
+  # ============================================================================
+  # UTILITIES
+  # ============================================================================
+
+  bull-board:
+    build:
+      context: ./ts-service
+      dockerfile: Dockerfile.bull-board
+    container_name: bull-board
+    environment:
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3001:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - ai-work-network
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  ai-work-network:
+    driver: bridge

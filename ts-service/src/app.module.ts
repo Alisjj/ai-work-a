@@ -1,58 +1,33 @@
-import { Module, ValidationPipe } from '@nestjs/common';
-import { APP_PIPE } from '@nestjs/core';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { BullModule } from '@nestjs/bull';
+import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { AppConfigModule } from './config/config.module';
-import { DatabaseModule } from './database/database.module';
+import { AuthModule } from './auth/auth.module';
+import { defaultDatabaseUrl, getTypeOrmOptions } from './config/typeorm.options';
+import { HealthModule } from './health/health.module';
+import { LlmModule } from './llm/llm.module';
+import { QueueModule } from './queue/queue.module';
+import { SampleModule } from './sample/sample.module';
 import { CandidatesModule } from './candidates/candidates.module';
 import { DocumentsModule } from './documents/documents.module';
 import { SummariesModule } from './summaries/summaries.module';
-import { SummarizationModule } from './summarization/summarization.module';
-import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
-    AppConfigModule,
+    ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        url: configService.get<string>('DATABASE_URL'),
-        entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: false,
-      }),
       inject: [ConfigService],
+      useFactory: (configService: ConfigService) =>
+        getTypeOrmOptions(configService.get<string>('DATABASE_URL') ?? defaultDatabaseUrl),
     }),
-    BullModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        redis: configService.get<string>('REDIS_URL'),
-        defaultJobOptions: {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 2000 },
-        },
-        settings: {
-          stalledInterval: 30000, // Check for stalled jobs every 30s
-          maxStalledCount: 1, // Retry stalled jobs once
-        },
-      }),
-      inject: [ConfigService],
-    }),
-    // Domain modules
-    DatabaseModule,
-    SummarizationModule,
+    AuthModule,
+    HealthModule,
+    QueueModule,
+    LlmModule,
+    SampleModule,
     CandidatesModule,
     DocumentsModule,
     SummariesModule,
-    HealthModule,
-  ],
-  providers: [
-    {
-      provide: APP_PIPE,
-      useValue: new ValidationPipe({ whitelist: true, transform: true }),
-    },
   ],
 })
 export class AppModule {}

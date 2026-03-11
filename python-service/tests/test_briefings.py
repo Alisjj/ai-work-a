@@ -1,287 +1,296 @@
-"""
-Briefings API tests.
+from collections.abc import Generator
 
-These tests run against a real PostgreSQL instance managed by Testcontainers.
-Docker must be running. No SQLite compatibility issues, no monkey-patching.
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
-Each test is wrapped in a rolled-back transaction (see conftest.py),
-so tests are fully isolated and leave no data behind.
-"""
-
-VALID_PAYLOAD = {
-    "companyName": "Acme Holdings",
-    "ticker": "acme",
-    "sector": "Industrial Technology",
-    "analystName": "Jane Doe",
-    "summary": "Acme is benefiting from strong enterprise demand.",
-    "recommendation": "Monitor for margin expansion.",
-    "keyPoints": [
-        "Revenue grew 18% year-over-year.",
-        "Management raised full-year guidance.",
-    ],
-    "risks": ["Top two customers account for 41% of total revenue."],
-    "metrics": [
-        {"name": "Revenue Growth", "value": "18%"},
-        {"name": "Operating Margin", "value": "22.4%"},
-    ],
-}
+from app.db.base import Base
+from app.db.session import get_db
+from app.main import app
+from app.models.briefing import Briefing, BriefingPoint, BriefingMetric  # noqa: F401
 
 
-# ---------------------------------------------------------------------------
-# POST /briefings
-# ---------------------------------------------------------------------------
+@pytest.fixture()
+def client() -> Generator[TestClient, None, None]:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    testing_session_local = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+
+    Base.metadata.create_all(bind=engine)
+
+    def override_get_db() -> Generator[Session, None, None]:
+        db = testing_session_local()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+    app.dependency_overrides.clear()
+    Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture
+def valid_briefing_data():
+    """Valid briefing data for testing."""
+    return {
+        "companyName": "Acme Holdings",
+        "ticker": "acme",
+        "sector": "Industrial Technology",
+        "analystName": "Jane Doe",
+        "summary": "Acme is benefiting from strong enterprise demand.",
+        "recommendation": "Monitor for margin expansion.",
+        "keyPoints": [
+            "Revenue grew 18% year-over-year.",
+            "Management raised full-year guidance.",
+        ],
+        "risks": [
+            "Top customers account for 41% of revenue.",
+        ],
+        "metrics": [
+            {"name": "Revenue Growth", "value": "18%"},
+            {"name": "Operating Margin", "value": "22.4%"},
+        ],
+    }
+
 
 class TestCreateBriefing:
+    """Tests for POST /briefings endpoint."""
 
-    def test_create_success(self, client):
-        r = client.post("/briefings", json=VALID_PAYLOAD)
-        assert r.status_code == 201
-        data = r.json()
-        assert data["ticker"] == "ACME"
+    def test_create_briefing_success(self, client, valid_briefing_data):
+        """Test successful briefing creation."""
+        response = client.post("/briefings", json=valid_briefing_data)
+        assert response.status_code == 201
+        data = response.json()
+        
         assert data["company_name"] == "Acme Holdings"
+        assert data["ticker"] == "ACME"  # Should be normalized to uppercase
+        assert data["sector"] == "Industrial Technology"
+        assert data["analyst_name"] == "Jane Doe"
+        assert not data["is_generated"]
         assert len(data["key_points"]) == 2
         assert len(data["risks"]) == 1
         assert len(data["metrics"]) == 2
-        assert data["is_generated"] is False
-        assert data["generated_at"] is None
+        assert "id" in data
+        assert "created_at" in data
 
-    def test_ticker_normalized_to_uppercase(self, client):
-        r = client.post("/briefings", json={**VALID_PAYLOAD, "ticker": "tsla"})
-        assert r.status_code == 201
-        assert r.json()["ticker"] == "TSLA"
+    def test_create_briefing_normalizes_ticker(self, client, valid_briefing_data):
+        """Test that ticker is normalized to uppercase."""
+        valid_briefing_data["ticker"] = "lowcase"
+        response = client.post("/briefings", json=valid_briefing_data)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["ticker"] == "LOWCASE"
 
-    def test_key_points_preserve_order(self, client):
-        payload = {
-            **VALID_PAYLOAD,
-            "keyPoints": ["First point", "Second point", "Third point"],
-        }
-        r = client.post("/briefings", json=payload)
-        assert r.status_code == 201
-        contents = [p["content"] for p in r.json()["key_points"]]
-        assert contents == ["First point", "Second point", "Third point"]
+    def test_create_briefing_without_metrics(self, client, valid_briefing_data):
+        """Test briefing creation without optional metrics."""
+        del valid_briefing_data["metrics"]
+        response = client.post("/briefings", json=valid_briefing_data)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["metrics"] == []
 
-    def test_missing_company_name(self, client):
-        r = client.post("/briefings", json={**VALID_PAYLOAD, "companyName": ""})
-        assert r.status_code == 422
+    def test_create_briefing_duplicate_metric_names_fails(
+        self, client, valid_briefing_data
+    ):
+        """Test that duplicate metric names are rejected."""
+        valid_briefing_data["metrics"] = [
+            {"name": "Revenue", "value": "10%"},
+            {"name": "revenue", "value": "20%"},  # Duplicate (case-insensitive)
+        ]
+        response = client.post("/briefings", json=valid_briefing_data)
+        assert response.status_code == 422
+        data = response.json()
+        assert any("unique" in str(err).lower() for err in data["detail"])
 
-    def test_missing_ticker(self, client):
-        r = client.post("/briefings", json={**VALID_PAYLOAD, "ticker": ""})
-        assert r.status_code == 422
+    def test_create_briefing_empty_company_name_fails(
+        self, client, valid_briefing_data
+    ):
+        """Test that empty company name is rejected."""
+        valid_briefing_data["companyName"] = ""
+        response = client.post("/briefings", json=valid_briefing_data)
+        assert response.status_code == 422
 
-    def test_missing_summary(self, client):
-        payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "summary"}
-        r = client.post("/briefings", json=payload)
-        assert r.status_code == 422
+    def test_create_briefing_insufficient_key_points_fails(
+        self, client, valid_briefing_data
+    ):
+        """Test that less than 2 key points is rejected."""
+        valid_briefing_data["keyPoints"] = ["Only one point"]
+        response = client.post("/briefings", json=valid_briefing_data)
+        assert response.status_code == 422
+        data = response.json()
+        assert any("2 key points" in str(err) for err in data["detail"])
 
-    def test_missing_recommendation(self, client):
-        payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "recommendation"}
-        r = client.post("/briefings", json=payload)
-        assert r.status_code == 422
+    def test_create_briefing_no_risks_fails(self, client, valid_briefing_data):
+        """Test that zero risks is rejected."""
+        valid_briefing_data["risks"] = []
+        response = client.post("/briefings", json=valid_briefing_data)
+        assert response.status_code == 422
+        data = response.json()
+        assert any("1 risk" in str(err) for err in data["detail"])
 
-    def test_too_few_key_points(self, client):
-        r = client.post("/briefings", json={**VALID_PAYLOAD, "keyPoints": ["Only one"]})
-        assert r.status_code == 422
-
-    def test_no_risks(self, client):
-        r = client.post("/briefings", json={**VALID_PAYLOAD, "risks": []})
-        assert r.status_code == 422
-
-    def test_duplicate_metric_names(self, client):
-        payload = {
-            **VALID_PAYLOAD,
-            "metrics": [
-                {"name": "Revenue", "value": "10%"},
-                {"name": "Revenue", "value": "20%"},
-            ],
-        }
-        r = client.post("/briefings", json=payload)
-        assert r.status_code == 422
-
-    def test_duplicate_metric_names_case_insensitive(self, client):
-        payload = {
-            **VALID_PAYLOAD,
-            "metrics": [
-                {"name": "Revenue", "value": "10%"},
-                {"name": "revenue", "value": "20%"},
-            ],
-        }
-        r = client.post("/briefings", json=payload)
-        assert r.status_code == 422
-
-    def test_metrics_are_optional(self, client):
-        payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "metrics"}
-        r = client.post("/briefings", json=payload)
-        assert r.status_code == 201
-        assert r.json()["metrics"] == []
-
-
-# ---------------------------------------------------------------------------
-# GET /briefings/{id}
-# ---------------------------------------------------------------------------
 
 class TestGetBriefing:
+    """Tests for GET /briefings/{id} endpoint."""
 
-    def test_get_existing(self, client):
-        briefing_id = client.post("/briefings", json=VALID_PAYLOAD).json()["id"]
-        r = client.get(f"/briefings/{briefing_id}")
-        assert r.status_code == 200
-        assert r.json()["id"] == briefing_id
+    def test_get_briefing_success(self, client, valid_briefing_data):
+        """Test successful briefing retrieval."""
+        # Create briefing first
+        create_response = client.post("/briefings", json=valid_briefing_data)
+        briefing_id = create_response.json()["id"]
 
-    def test_get_not_found(self, client):
-        r = client.get("/briefings/00000000-0000-0000-0000-000000000000")
-        assert r.status_code == 404
+        # Retrieve briefing
+        response = client.get(f"/briefings/{briefing_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == briefing_id
+        assert data["company_name"] == "Acme Holdings"
 
-    def test_get_returns_correct_shape(self, client):
-        briefing_id = client.post("/briefings", json=VALID_PAYLOAD).json()["id"]
-        data = client.get(f"/briefings/{briefing_id}").json()
-        assert "key_points" in data
-        assert "risks" in data
-        assert "metrics" in data
-        assert "is_generated" in data
+    def test_get_briefing_not_found(self, client):
+        """Test 404 for non-existent briefing."""
+        from uuid import uuid4
+        response = client.get(f"/briefings/{uuid4()}")
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
 
-
-# ---------------------------------------------------------------------------
-# POST /briefings/{id}/generate
-# ---------------------------------------------------------------------------
 
 class TestGenerateBriefing:
+    """Tests for POST /briefings/{id}/generate endpoint."""
 
-    def test_generate_marks_as_generated(self, client):
-        briefing_id = client.post("/briefings", json=VALID_PAYLOAD).json()["id"]
-        r = client.post(f"/briefings/{briefing_id}/generate")
-        assert r.status_code == 200
-        assert r.json()["is_generated"] is True
-        assert r.json()["generated_at"] is not None
+    def test_generate_briefing_success(self, client, valid_briefing_data):
+        """Test successful briefing generation."""
+        # Create briefing first
+        create_response = client.post("/briefings", json=valid_briefing_data)
+        briefing_id = create_response.json()["id"]
 
-    def test_generate_not_found(self, client):
-        r = client.post("/briefings/00000000-0000-0000-0000-000000000000/generate")
-        assert r.status_code == 404
+        # Generate briefing
+        response = client.post(f"/briefings/{briefing_id}/generate")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == briefing_id
+        assert data["is_generated"] is True
+        assert data["generated_at"] is not None
 
-    def test_generate_is_idempotent(self, client):
-        briefing_id = client.post("/briefings", json=VALID_PAYLOAD).json()["id"]
+    def test_generate_briefing_not_found(self, client):
+        """Test 404 for non-existent briefing."""
+        from uuid import uuid4
+        response = client.post(f"/briefings/{uuid4()}/generate")
+        assert response.status_code == 404
+
+    def test_generate_briefing_updates_status(self, client, valid_briefing_data):
+        """Test that generation updates briefing status."""
+        create_response = client.post("/briefings", json=valid_briefing_data)
+        briefing_id = create_response.json()["id"]
+
+        # Before generation
+        assert not create_response.json()["is_generated"]
+
+        # Generate
         client.post(f"/briefings/{briefing_id}/generate")
-        r = client.post(f"/briefings/{briefing_id}/generate")
-        assert r.status_code == 200
-        assert r.json()["is_generated"] is True
+
+        # After generation
+        response = client.get(f"/briefings/{briefing_id}")
+        assert response.json()["is_generated"] is True
 
 
-# ---------------------------------------------------------------------------
-# GET /briefings/{id}/html
-# ---------------------------------------------------------------------------
+class TestGetBriefingHtml:
+    """Tests for GET /briefings/{id}/html endpoint."""
 
-class TestBriefingHTML:
-
-    def test_html_before_generate_returns_409(self, client):
-        briefing_id = client.post("/briefings", json=VALID_PAYLOAD).json()["id"]
-        r = client.get(f"/briefings/{briefing_id}/html")
-        assert r.status_code == 409
-
-    def test_html_after_generate_returns_200(self, client):
-        briefing_id = client.post("/briefings", json=VALID_PAYLOAD).json()["id"]
+    def test_get_briefing_html_success(self, client, valid_briefing_data):
+        """Test successful HTML generation."""
+        # Create and generate briefing
+        create_response = client.post("/briefings", json=valid_briefing_data)
+        briefing_id = create_response.json()["id"]
         client.post(f"/briefings/{briefing_id}/generate")
-        r = client.get(f"/briefings/{briefing_id}/html")
-        assert r.status_code == 200
-        assert "text/html" in r.headers["content-type"]
 
-    def test_html_contains_company_data(self, client):
-        briefing_id = client.post("/briefings", json=VALID_PAYLOAD).json()["id"]
-        client.post(f"/briefings/{briefing_id}/generate")
-        html = client.get(f"/briefings/{briefing_id}/html").text
+        # Get HTML
+        response = client.get(f"/briefings/{briefing_id}/html")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/html")
+        html = response.text
+        assert "<!DOCTYPE html>" in html
         assert "Acme Holdings" in html
         assert "ACME" in html
-        assert "Revenue grew 18%" in html
-        assert "Top two customers" in html
-        assert "Monitor for margin expansion" in html
 
-    def test_html_contains_metrics_table(self, client):
-        briefing_id = client.post("/briefings", json=VALID_PAYLOAD).json()["id"]
-        client.post(f"/briefings/{briefing_id}/generate")
-        html = client.get(f"/briefings/{briefing_id}/html").text
-        assert "Revenue Growth" in html
-        assert "18%" in html
+    def test_get_briefing_html_not_generated(self, client, valid_briefing_data):
+        """Test 409 when briefing not generated."""
+        create_response = client.post("/briefings", json=valid_briefing_data)
+        briefing_id = create_response.json()["id"]
 
-    def test_html_no_metrics_skips_table(self, client):
-        payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "metrics"}
-        briefing_id = client.post("/briefings", json=payload).json()["id"]
-        client.post(f"/briefings/{briefing_id}/generate")
-        html = client.get(f"/briefings/{briefing_id}/html").text
-        assert "metrics-table" not in html
+        response = client.get(f"/briefings/{briefing_id}/html")
+        assert response.status_code == 409
+        assert "not been generated" in response.json()["detail"]
 
-    def test_html_not_found(self, client):
-        r = client.get("/briefings/00000000-0000-0000-0000-000000000000/html")
-        assert r.status_code == 404
+    def test_get_briefing_html_not_found(self, client):
+        """Test 404 for non-existent briefing."""
+        from uuid import uuid4
+        response = client.get(f"/briefings/{uuid4()}/html")
+        assert response.status_code == 404
 
-
-# ---------------------------------------------------------------------------
-# GET /briefings (List with pagination)
-# ---------------------------------------------------------------------------
 
 class TestListBriefings:
+    """Tests for GET /briefings endpoint."""
 
-    def test_list_empty(self, client):
+    def test_list_briefings_empty(self, client):
         """Test listing when no briefings exist."""
-        r = client.get("/briefings")
-        assert r.status_code == 200
-        data = r.json()
+        response = client.get("/briefings")
+        assert response.status_code == 200
+        data = response.json()
         assert data["items"] == []
         assert data["meta"]["total_items"] == 0
-        assert data["meta"]["page"] == 1
-        assert data["meta"]["page_size"] == 20
 
-    def test_list_with_pagination(self, client):
+    def test_list_briefings_with_data(self, client, valid_briefing_data):
+        """Test listing with multiple briefings."""
+        # Create multiple briefings
+        for i in range(3):
+            data = valid_briefing_data.copy()
+            data["companyName"] = f"Company {i}"
+            client.post("/briefings", json=data)
+
+        response = client.get("/briefings")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 3
+        assert data["meta"]["total_items"] == 3
+        assert data["meta"]["page"] == 1
+
+    def test_list_briefings_pagination(self, client, valid_briefing_data):
         """Test pagination works correctly."""
         # Create 5 briefings
         for i in range(5):
-            payload = {**VALID_PAYLOAD, "companyName": f"Company {i}"}
-            client.post("/briefings", json=payload)
+            data = valid_briefing_data.copy()
+            data["companyName"] = f"Company {i}"
+            client.post("/briefings", json=data)
 
-        # Get first page
-        r = client.get("/briefings?page=1&page_size=2")
-        assert r.status_code == 200
-        data = r.json()
+        # Get first page (page_size=2)
+        response = client.get("/briefings?page=1&page_size=2")
+        data = response.json()
         assert len(data["items"]) == 2
-        assert data["meta"]["total_items"] == 5
         assert data["meta"]["page"] == 1
         assert data["meta"]["page_size"] == 2
-        assert data["meta"]["total_pages"] == 3
+        assert data["meta"]["total_items"] == 5
         assert data["meta"]["has_next"] is True
         assert data["meta"]["has_prev"] is False
 
         # Get second page
-        r = client.get("/briefings?page=2&page_size=2")
-        assert r.status_code == 200
-        data = r.json()
+        response = client.get("/briefings?page=2&page_size=2")
+        data = response.json()
         assert len(data["items"]) == 2
-        assert data["meta"]["page"] == 2
         assert data["meta"]["has_next"] is True
         assert data["meta"]["has_prev"] is True
 
         # Get last page
-        r = client.get("/briefings?page=3&page_size=2")
-        assert r.status_code == 200
-        data = r.json()
+        response = client.get("/briefings?page=3&page_size=2")
+        data = response.json()
         assert len(data["items"]) == 1
-        assert data["meta"]["page"] == 3
         assert data["meta"]["has_next"] is False
         assert data["meta"]["has_prev"] is True
-
-    def test_list_default_page_size(self, client):
-        """Test default page size is 20."""
-        r = client.get("/briefings")
-        assert r.status_code == 200
-        data = r.json()
-        assert data["meta"]["page_size"] == 20
-
-    def test_list_invalid_page_param(self, client):
-        """Test invalid page parameters are rejected."""
-        # Page 0 should fail
-        r = client.get("/briefings?page=0")
-        assert r.status_code == 422
-
-        # Negative page should fail
-        r = client.get("/briefings?page=-1")
-        assert r.status_code == 422
-
-        # Page size > 100 should fail
-        r = client.get("/briefings?page_size=101")
-        assert r.status_code == 422

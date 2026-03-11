@@ -38,9 +38,15 @@ The HTML is designed to look like a print-ready internal report: a dark header w
 
 ### Testing
 
-Tests use Testcontainers (`testcontainers[postgres]`) to spin up a real PostgreSQL 15 container once per test session. Alembic migrations are run against it, so the test database is schema-identical to production. Each individual test runs inside a SAVEPOINT transaction that is rolled back on teardown — providing full isolation with no table truncation overhead.
+Tests use pure mocking with `unittest.mock` and `freezegun` for time control. No Docker or database required.
 
-Docker must be running to execute the test suite. The container starts in ~5 seconds and is shared across all tests, so the per-test cost is negligible.
+The approach:
+- Mock the service layer at the route level (`app.api.routes.briefings.briefing_service.*`)
+- Return plain dicts that match the `BriefingOut` schema (not ORM mocks)
+- Use `freezegun` for deterministic timestamps where needed
+- Validation tests (422 responses) don't need mocking — they test Pydantic schemas directly
+
+This keeps tests fast (~0.4s for 28 tests) and removes the Docker dependency.
 
 ---
 

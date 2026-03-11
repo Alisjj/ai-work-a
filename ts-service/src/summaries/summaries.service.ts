@@ -2,20 +2,16 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 
-import { SummaryStatus } from './entities/candidate-summary.entity';
-import {
-  CANDIDATE_REPOSITORY,
-  SUMMARY_REPOSITORY,
-  ICandidateRepository,
-  ISummaryRepository,
-  SummaryRecord,
-} from '../common/repositories/interfaces';
 import {
   SUMMARY_QUEUE,
   SUMMARY_JOB,
   SummaryJobPayload,
   SUMMARY_JOB_OPTIONS,
 } from './queue.constants';
+import { SUMMARIZATION_PROVIDER, SummarizationProvider } from '../llm/summarization-provider.interface';
+import { SUMMARY_REPOSITORY, ISummaryRepository, SummaryRecord } from '../common/repositories/summary.repository';
+import { CANDIDATE_REPOSITORY, ICandidateRepository } from '../common/repositories/candidate.repository';
+import { SummaryStatus } from '../entities/candidate-summary.entity';
 
 @Injectable()
 export class SummariesService {
@@ -25,7 +21,7 @@ export class SummariesService {
     @Inject(SUMMARY_REPOSITORY)
     private readonly summaryRepo: ISummaryRepository,
     @InjectQueue(SUMMARY_QUEUE)
-    private readonly summaryQueue: Queue
+    private readonly summaryQueue: Queue,
   ) {}
 
   private async assertCandidateOwnership(candidateId: string, workspaceId: string): Promise<void> {
@@ -58,7 +54,7 @@ export class SummariesService {
   async getSummary(
     workspaceId: string,
     candidateId: string,
-    summaryId: string
+    summaryId: string,
   ): Promise<SummaryRecord> {
     await this.assertCandidateOwnership(candidateId, workspaceId);
     const summary = await this.summaryRepo.findByIdAndCandidateId(summaryId, candidateId);
