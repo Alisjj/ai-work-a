@@ -1,9 +1,9 @@
 import os
 from logging.config import fileConfig
 
+from alembic import context
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
-from alembic import context
 
 from app.db.session import Base
 from app.models import briefing  # noqa: F401 — ensure models are registered
@@ -12,7 +12,7 @@ load_dotenv()
 
 config = context.config
 
-# Override sqlalchemy.url from environment only if it is the default placeholder 
+# Override sqlalchemy.url from environment only if it is the default placeholder
 # (this prevents breaking pytest which injects a Testcontainers URL)
 current_url = config.get_main_option("sqlalchemy.url")
 if current_url == "postgresql://localhost/replace_me":

@@ -11,17 +11,24 @@ Requirements:
   - Docker must be running on the host machine.
   - `testcontainers[postgres]` must be installed (see requirements.txt).
 """
+import os
+
+# Set test environment variables BEFORE importing app modules
+os.environ["DEBUG"] = "true"
+os.environ["API_KEY"] = "test-api-key"
+os.environ["RATE_LIMIT_PER_MINUTE"] = "1000"  # High limit for tests
+
 import pytest
+from alembic import command
+from alembic.config import Config
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from testcontainers.postgres import PostgresContainer
-from alembic.config import Config
-from alembic import command
 
+from app.core import config
 from app.db.session import get_db
 from app.main import app
-from fastapi.testclient import TestClient
-
 
 # ---------------------------------------------------------------------------
 # Session-scoped container + engine
@@ -72,8 +79,8 @@ def db_session(db_engine):
     # it only rolls back to the savepoint, not the outer transaction.
     connection.execute(text("SAVEPOINT test_savepoint"))
 
-    TestSession = sessionmaker(bind=connection)
-    session = TestSession()
+    test_session = sessionmaker(bind=connection)
+    session = test_session()
 
     yield session
 
@@ -94,6 +101,6 @@ def client(db_session):
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as c:
+    with TestClient(app, headers={"X-API-Key": "test-api-key"}) as c:
         yield c
     app.dependency_overrides.clear()

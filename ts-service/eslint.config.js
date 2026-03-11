@@ -1,5 +1,6 @@
 const tseslint = require('@typescript-eslint/eslint-plugin');
 const tsparser = require('@typescript-eslint/parser');
+const prettierConfig = require('eslint-config-prettier');
 
 module.exports = [
   {
@@ -20,4 +21,5 @@ module.exports = [
       'no-console': 'warn',
     },
   },
+  prettierConfig,
 ];

@@ -210,3 +210,78 @@ class TestBriefingHTML:
     def test_html_not_found(self, client):
         r = client.get("/briefings/00000000-0000-0000-0000-000000000000/html")
         assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /briefings (List with pagination)
+# ---------------------------------------------------------------------------
+
+class TestListBriefings:
+
+    def test_list_empty(self, client):
+        """Test listing when no briefings exist."""
+        r = client.get("/briefings")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["items"] == []
+        assert data["meta"]["total_items"] == 0
+        assert data["meta"]["page"] == 1
+        assert data["meta"]["page_size"] == 20
+
+    def test_list_with_pagination(self, client):
+        """Test pagination works correctly."""
+        # Create 5 briefings
+        for i in range(5):
+            payload = {**VALID_PAYLOAD, "companyName": f"Company {i}"}
+            client.post("/briefings", json=payload)
+
+        # Get first page
+        r = client.get("/briefings?page=1&page_size=2")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["items"]) == 2
+        assert data["meta"]["total_items"] == 5
+        assert data["meta"]["page"] == 1
+        assert data["meta"]["page_size"] == 2
+        assert data["meta"]["total_pages"] == 3
+        assert data["meta"]["has_next"] is True
+        assert data["meta"]["has_prev"] is False
+
+        # Get second page
+        r = client.get("/briefings?page=2&page_size=2")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["items"]) == 2
+        assert data["meta"]["page"] == 2
+        assert data["meta"]["has_next"] is True
+        assert data["meta"]["has_prev"] is True
+
+        # Get last page
+        r = client.get("/briefings?page=3&page_size=2")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["items"]) == 1
+        assert data["meta"]["page"] == 3
+        assert data["meta"]["has_next"] is False
+        assert data["meta"]["has_prev"] is True
+
+    def test_list_default_page_size(self, client):
+        """Test default page size is 20."""
+        r = client.get("/briefings")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["meta"]["page_size"] == 20
+
+    def test_list_invalid_page_param(self, client):
+        """Test invalid page parameters are rejected."""
+        # Page 0 should fail
+        r = client.get("/briefings?page=0")
+        assert r.status_code == 422
+
+        # Negative page should fail
+        r = client.get("/briefings?page=-1")
+        assert r.status_code == 422
+
+        # Page size > 100 should fail
+        r = client.get("/briefings?page_size=101")
+        assert r.status_code == 422

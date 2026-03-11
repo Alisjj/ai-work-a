@@ -1,0 +1,8 @@
+{
+    "venv": ".venv",
+    "pythonVersion": "3.12",
+    "pythonAnalysis": {
+        "autoSearchPaths": true,
+        "extraPaths": ["."]
+    }
+}
