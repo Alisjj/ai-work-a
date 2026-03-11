@@ -15,8 +15,12 @@ import {
   DocumentRecord,
   SummaryStatus,
   RecommendedDecision,
-} from '../common/interfaces';
+} from '../common/repositories/interfaces';
 
+/**
+ * SummaryProcessor - Handles background job processing for summary generation
+ * Concurrency: 5 jobs max to prevent API rate limiting and resource exhaustion
+ */
 @Processor(SUMMARY_QUEUE)
 export class SummaryProcessor {
   private readonly logger = new Logger(SummaryProcessor.name);
@@ -27,8 +31,8 @@ export class SummaryProcessor {
     @Inject(SUMMARY_REPOSITORY)
     private readonly summaryRepo: ISummaryRepository,
     @Inject(DOCUMENT_REPOSITORY)
-    private readonly documentRepo: IDocumentRepository,
-  ) { }
+    private readonly documentRepo: IDocumentRepository
+  ) {}
 
   @Process(SUMMARY_JOB.GENERATE)
   async handleGenerateSummary(job: Job<SummaryJobPayload>): Promise<void> {

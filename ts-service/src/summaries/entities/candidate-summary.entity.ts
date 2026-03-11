@@ -26,33 +26,33 @@ export enum RecommendedDecision {
 @Entity('candidate_summaries')
 export class CandidateSummary {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ name: 'candidate_id' })
-  candidateId: string;
+  candidateId!: string;
 
   @ManyToOne(() => Candidate)
   @JoinColumn({ name: 'candidate_id' })
-  candidate: Candidate;
+  candidate!: Candidate;
 
   @Column({
     type: 'enum',
     enum: SummaryStatus,
     default: SummaryStatus.PENDING,
   })
-  status: SummaryStatus;
+  status!: SummaryStatus;
 
   @Column({ type: 'float', nullable: true })
-  score: number | null;
+  score!: number | null;
 
   @Column({ type: 'text', array: true, nullable: true })
-  strengths: string[] | null;
+  strengths!: string[] | null;
 
   @Column({ type: 'text', array: true, nullable: true })
-  concerns: string[] | null;
+  concerns!: string[] | null;
 
   @Column({ type: 'text', nullable: true })
-  summary: string | null;
+  summary!: string | null;
 
   @Column({
     name: 'recommended_decision',
@@ -60,20 +60,20 @@ export class CandidateSummary {
     enum: RecommendedDecision,
     nullable: true,
   })
-  recommendedDecision: RecommendedDecision | null;
+  recommendedDecision!: RecommendedDecision | null;
 
   @Column({ name: 'provider', type: 'varchar', length: 100, nullable: true })
-  provider: string | null;
+  provider!: string | null;
 
   @Column({ name: 'prompt_version', type: 'varchar', length: 50, nullable: true })
-  promptVersion: string | null;
+  promptVersion!: string | null;
 
   @Column({ name: 'error_message', type: 'text', nullable: true })
-  errorMessage: string | null;
+  errorMessage!: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
-  updatedAt: Date;
+  updatedAt!: Date;
 }

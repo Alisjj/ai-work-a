@@ -2,32 +2,51 @@ import { Module, ValidationPipe } from '@nestjs/common';
 import { APP_PIPE } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
-import * as dotenv from 'dotenv';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
-dotenv.config();
-
-import { Workspace } from './auth/entities/workspace.entity';
-import { Candidate } from './candidates/entities/candidate.entity';
-import { CandidateDocument } from './documents/entities/candidate-document.entity';
-import { CandidateSummary } from './summaries/entities/candidate-summary.entity';
-
+import { AppConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { CandidatesModule } from './candidates/candidates.module';
+import { DocumentsModule } from './documents/documents.module';
+import { SummariesModule } from './summaries/summaries.module';
+import { SummarizationModule } from './summarization/summarization.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      url: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/candidates_db',
-      entities: [Workspace, Candidate, CandidateDocument, CandidateSummary],
-      synchronize: false,
+    AppConfigModule,
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        type: 'postgres',
+        url: configService.get<string>('DATABASE_URL'),
+        entities: [__dirname + '/**/*.entity{.ts,.js}'],
+        synchronize: false,
+      }),
+      inject: [ConfigService],
     }),
-    BullModule.forRoot({
-      redis: process.env.REDIS_URL || 'redis://localhost:6379',
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        redis: configService.get<string>('REDIS_URL'),
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 2000 },
+        },
+        settings: {
+          stalledInterval: 30000, // Check for stalled jobs every 30s
+          maxStalledCount: 1, // Retry stalled jobs once
+        },
+      }),
+      inject: [ConfigService],
     }),
     // Domain modules
     DatabaseModule,
+    SummarizationModule,
     CandidatesModule,
+    DocumentsModule,
+    SummariesModule,
+    HealthModule,
   ],
   providers: [
     {
@@ -36,4 +55,4 @@ import { CandidatesModule } from './candidates/candidates.module';
     },
   ],
 })
-export class AppModule { }
+export class AppModule {}

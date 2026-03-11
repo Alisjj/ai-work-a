@@ -7,7 +7,7 @@ import {
   ICandidateRepository,
   IDocumentRepository,
   DocumentRecord,
-} from '../repositories/interfaces';
+} from '../common/repositories/interfaces';
 
 @Injectable()
 export class DocumentsService {
@@ -15,22 +15,17 @@ export class DocumentsService {
     @Inject(CANDIDATE_REPOSITORY)
     private readonly candidateRepo: ICandidateRepository,
     @Inject(DOCUMENT_REPOSITORY)
-    private readonly documentRepo: IDocumentRepository,
+    private readonly documentRepo: IDocumentRepository
   ) {}
 
   async createDocument(
     workspaceId: string,
     candidateId: string,
-    dto: CreateDocumentDto,
+    dto: CreateDocumentDto
   ): Promise<DocumentRecord> {
-    const candidate = await this.candidateRepo.findByIdAndWorkspace(
-      candidateId,
-      workspaceId,
-    );
+    const candidate = await this.candidateRepo.findByIdAndWorkspace(candidateId, workspaceId);
     if (!candidate) {
-      throw new NotFoundException(
-        `Candidate ${candidateId} not found in your workspace`,
-      );
+      throw new NotFoundException(`Candidate ${candidateId} not found in your workspace`);
     }
 
     const storageKey = `workspaces/${workspaceId}/candidates/${candidateId}/documents/${Date.now()}-${dto.fileName}`;

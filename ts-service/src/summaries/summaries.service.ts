@@ -9,8 +9,13 @@ import {
   ICandidateRepository,
   ISummaryRepository,
   SummaryRecord,
-} from '../common/interfaces';
-import { SUMMARY_QUEUE, SUMMARY_JOB, SummaryJobPayload } from './queue.constants';
+} from '../common/repositories/interfaces';
+import {
+  SUMMARY_QUEUE,
+  SUMMARY_JOB,
+  SummaryJobPayload,
+  SUMMARY_JOB_OPTIONS,
+} from './queue.constants';
 
 @Injectable()
 export class SummariesService {
@@ -20,28 +25,17 @@ export class SummariesService {
     @Inject(SUMMARY_REPOSITORY)
     private readonly summaryRepo: ISummaryRepository,
     @InjectQueue(SUMMARY_QUEUE)
-    private readonly summaryQueue: Queue,
-  ) { }
+    private readonly summaryQueue: Queue
+  ) {}
 
-  private async assertCandidateOwnership(
-    candidateId: string,
-    workspaceId: string,
-  ): Promise<void> {
-    const candidate = await this.candidateRepo.findByIdAndWorkspace(
-      candidateId,
-      workspaceId,
-    );
+  private async assertCandidateOwnership(candidateId: string, workspaceId: string): Promise<void> {
+    const candidate = await this.candidateRepo.findByIdAndWorkspace(candidateId, workspaceId);
     if (!candidate) {
-      throw new NotFoundException(
-        `Candidate ${candidateId} not found in your workspace`,
-      );
+      throw new NotFoundException(`Candidate ${candidateId} not found in your workspace`);
     }
   }
 
-  async requestGeneration(
-    workspaceId: string,
-    candidateId: string,
-  ): Promise<SummaryRecord> {
+  async requestGeneration(workspaceId: string, candidateId: string): Promise<SummaryRecord> {
     await this.assertCandidateOwnership(candidateId, workspaceId);
 
     const summary = await this.summaryRepo.create({
@@ -51,19 +45,12 @@ export class SummariesService {
 
     const payload: SummaryJobPayload = { summaryId: summary.id, candidateId };
 
-    await this.summaryQueue.add(SUMMARY_JOB.GENERATE, payload, {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 2000 },
-      removeOnComplete: true,
-    });
+    await this.summaryQueue.add(SUMMARY_JOB.GENERATE, payload, SUMMARY_JOB_OPTIONS);
 
     return summary;
   }
 
-  async listSummaries(
-    workspaceId: string,
-    candidateId: string,
-  ): Promise<SummaryRecord[]> {
+  async listSummaries(workspaceId: string, candidateId: string): Promise<SummaryRecord[]> {
     await this.assertCandidateOwnership(candidateId, workspaceId);
     return this.summaryRepo.findByCandidateId(candidateId);
   }
@@ -71,13 +58,10 @@ export class SummariesService {
   async getSummary(
     workspaceId: string,
     candidateId: string,
-    summaryId: string,
+    summaryId: string
   ): Promise<SummaryRecord> {
     await this.assertCandidateOwnership(candidateId, workspaceId);
-    const summary = await this.summaryRepo.findByIdAndCandidateId(
-      summaryId,
-      candidateId,
-    );
+    const summary = await this.summaryRepo.findByIdAndCandidateId(summaryId, candidateId);
     if (!summary) {
       throw new NotFoundException(`Summary ${summaryId} not found`);
     }

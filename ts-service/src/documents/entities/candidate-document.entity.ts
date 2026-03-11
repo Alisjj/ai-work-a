@@ -17,14 +17,14 @@ export enum DocumentType {
 @Entity('candidate_documents')
 export class CandidateDocument {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ name: 'candidate_id' })
-  candidateId: string;
+  candidateId!: string;
 
   @ManyToOne(() => Candidate)
   @JoinColumn({ name: 'candidate_id' })
-  candidate: Candidate;
+  candidate!: Candidate;
 
   @Column({
     name: 'document_type',
@@ -32,17 +32,17 @@ export class CandidateDocument {
     enum: DocumentType,
     default: DocumentType.RESUME,
   })
-  documentType: DocumentType;
+  documentType!: DocumentType;
 
   @Column({ name: 'file_name', length: 255 })
-  fileName: string;
+  fileName!: string;
 
   @Column({ name: 'storage_key', length: 512 })
-  storageKey: string;
+  storageKey!: string;
 
   @Column({ name: 'raw_text', type: 'text' })
-  rawText: string;
+  rawText!: string;
 
   @CreateDateColumn({ name: 'uploaded_at', type: 'timestamptz' })
-  uploadedAt: Date;
+  uploadedAt!: Date;
 }

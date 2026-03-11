@@ -3,13 +3,13 @@ import { DocumentType } from '../entities/candidate-document.entity';
 
 export class CreateDocumentDto {
   @IsEnum(DocumentType)
-  documentType: DocumentType;
+  documentType!: DocumentType;
 
   @IsString()
   @IsNotEmpty()
-  fileName: string;
+  fileName!: string;
 
   @IsString()
   @IsNotEmpty()
-  rawText: string;
+  rawText!: string;
 }

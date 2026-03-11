@@ -1,10 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import {
-  SummarizationProvider,
-  SummaryInput,
-  SummaryOutput,
-} from './summarization.interface';
+import { SummarizationProvider, SummaryInput, SummaryOutput } from './summarization.interface';
 
 const PROMPT_VERSION = 'v1';
 
@@ -14,23 +11,21 @@ const VALID_DECISIONS = new Set(['strong_yes', 'yes', 'maybe', 'no', 'strong_no'
 export class GeminiSummarizationProvider implements SummarizationProvider {
   private readonly logger = new Logger(GeminiSummarizationProvider.name);
   private readonly genAI: GoogleGenerativeAI;
+  private readonly apiKey: string;
 
-  constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+  constructor(private readonly configService: ConfigService) {
+    this.apiKey = this.configService.get<string>('GEMINI_API_KEY')!;
+    if (!this.apiKey) {
       throw new Error('GEMINI_API_KEY environment variable is not set');
     }
-    this.genAI = new GoogleGenerativeAI(apiKey);
+    this.genAI = new GoogleGenerativeAI(this.apiKey);
   }
 
   async generateCandidateSummary(input: SummaryInput): Promise<SummaryOutput> {
     const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     const docBlock = input.documents
-      .map(
-        (d, i) =>
-          `--- Document ${i + 1}: ${d.documentType} (${d.fileName}) ---\n${d.rawText}`,
-      )
+      .map((d, i) => `--- Document ${i + 1}: ${d.documentType} (${d.fileName}) ---\n${d.rawText}`)
       .join('\n\n');
 
     const prompt = `
@@ -62,7 +57,10 @@ The JSON must conform to this exact schema:
 
     // Strip markdown code fences if the model added them anyway
     if (text.startsWith('```')) {
-      text = text.replace(/^```[a-z]*\n?/, '').replace(/```$/, '').trim();
+      text = text
+        .replace(/^```[a-z]*\n?/, '')
+        .replace(/```$/, '')
+        .trim();
     }
 
     let parsed: unknown;

@@ -26,7 +26,7 @@ export class InitialSchema1700000000000 implements MigrationInterface {
       )
     `);
     await queryRunner.query(
-      `CREATE INDEX "ix_candidates_workspace_id" ON "candidates" ("workspace_id")`,
+      `CREATE INDEX "ix_candidates_workspace_id" ON "candidates" ("workspace_id")`
     );
 
     await queryRunner.query(`
@@ -48,7 +48,7 @@ export class InitialSchema1700000000000 implements MigrationInterface {
       )
     `);
     await queryRunner.query(
-      `CREATE INDEX "ix_candidate_documents_candidate_id" ON "candidate_documents" ("candidate_id")`,
+      `CREATE INDEX "ix_candidate_documents_candidate_id" ON "candidate_documents" ("candidate_id")`
     );
 
     await queryRunner.query(`
@@ -81,7 +81,7 @@ export class InitialSchema1700000000000 implements MigrationInterface {
       )
     `);
     await queryRunner.query(
-      `CREATE INDEX "ix_candidate_summaries_candidate_id" ON "candidate_summaries" ("candidate_id")`,
+      `CREATE INDEX "ix_candidate_summaries_candidate_id" ON "candidate_summaries" ("candidate_id")`
     );
   }
 

@@ -11,21 +11,21 @@ import { Workspace } from '../../auth/entities/workspace.entity';
 @Entity('candidates')
 export class Candidate {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ name: 'workspace_id' })
-  workspaceId: string;
+  workspaceId!: string;
 
   @ManyToOne(() => Workspace)
   @JoinColumn({ name: 'workspace_id' })
-  workspace: Workspace;
+  workspace!: Workspace;
 
   @Column({ length: 255 })
-  name: string;
+  name!: string;
 
   @Column({ length: 255, nullable: true })
-  email: string;
+  email!: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 }

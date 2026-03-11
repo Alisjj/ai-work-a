@@ -1,11 +1,5 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
-
 
 @Injectable()
 export class WorkspaceGuard implements CanActivate {
@@ -15,7 +9,7 @@ export class WorkspaceGuard implements CanActivate {
 
     if (!workspaceId) {
       throw new UnauthorizedException(
-        'Missing x-workspace-id header. Provide your workspace ID to authenticate.',
+        'Missing x-workspace-id header. Provide your workspace ID to authenticate.'
       );
     }
 

@@ -1,9 +1,9 @@
 /**
- * SummaryProcessor tests.
+ * SummaryProcessor Unit Tests
  *
- * Uses InMemoryDocumentRepository and InMemorySummaryRepository.
- * The summarization provider is a simple fake implementing the interface.
- * No Jest mocking, no TypeORM, no database.
+ * Uses Jest mocks for repositories.
+ * Fake summarization provider for controlled testing.
+ * No in-memory implementations, no database dependencies.
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { Job } from 'bull';
@@ -15,21 +15,13 @@ import {
   SummarizationProvider,
   SummaryOutput,
 } from '../summarization/summarization.interface';
-import {
-  DOCUMENT_REPOSITORY,
-  SUMMARY_REPOSITORY,
-} from '../repositories/interfaces';
-import {
-  InMemoryDocumentRepository,
-  InMemorySummaryRepository,
-} from '../repositories/inmemory';
-import {
-  SummaryStatus,
-} from './entities/candidate-summary.entity';
+import { DOCUMENT_REPOSITORY, SUMMARY_REPOSITORY } from '../common/repositories/interfaces';
+import { IDocumentRepository, ISummaryRepository } from '../common/interfaces';
+import { SummaryStatus } from './entities/candidate-summary.entity';
 import { DocumentType } from '../documents/entities/candidate-document.entity';
 
 // ---------------------------------------------------------------------------
-// Fake summarization provider — implements the interface, no mocking
+// Fake Summarization Provider
 // ---------------------------------------------------------------------------
 const FAKE_OUTPUT: SummaryOutput = {
   score: 85,
@@ -53,150 +45,175 @@ class FakeSummarizationProvider implements SummarizationProvider {
 }
 
 // ---------------------------------------------------------------------------
-// Test builder
+// Mock Factories
 // ---------------------------------------------------------------------------
-async function buildProcessor(provider?: SummarizationProvider) {
-  const summaryRepo = new InMemorySummaryRepository();
-  const documentRepo = new InMemoryDocumentRepository();
-  const fakeProvider = provider ?? new FakeSummarizationProvider();
+const createMockDocumentRepository = (): jest.Mocked<IDocumentRepository> => ({
+  create: jest.fn(),
+  findByCandidateId: jest.fn(),
+});
 
-  const module: TestingModule = await Test.createTestingModule({
-    providers: [
-      SummaryProcessor,
-      { provide: SUMMARIZATION_PROVIDER, useValue: fakeProvider },
-      { provide: SUMMARY_REPOSITORY, useValue: summaryRepo },
-      { provide: DOCUMENT_REPOSITORY, useValue: documentRepo },
-    ],
-  }).compile();
+const createMockSummaryRepository = (): jest.Mocked<ISummaryRepository> => ({
+  create: jest.fn(),
+  findById: jest.fn(),
+  findByCandidateId: jest.fn(),
+  findByIdAndCandidateId: jest.fn(),
+  update: jest.fn(),
+});
 
-  return {
-    processor: module.get<SummaryProcessor>(SummaryProcessor),
-    summaryRepo,
-    documentRepo,
-    provider: fakeProvider as FakeSummarizationProvider,
-  };
-}
+// ---------------------------------------------------------------------------
+// Test Helpers
+// ---------------------------------------------------------------------------
+const makeJob = (data: SummaryJobPayload): Job<SummaryJobPayload> =>
+  ({ data }) as unknown as Job<SummaryJobPayload>;
 
-const makeJob = (data: SummaryJobPayload) => ({ data } as unknown as Job<SummaryJobPayload>);
-
+// ---------------------------------------------------------------------------
+// Test Constants
+// ---------------------------------------------------------------------------
 const CANDIDATE_ID = 'cand-1';
+const SUMMARY_ID = 'summary-1';
 
-async function seedDoc(documentRepo: InMemoryDocumentRepository) {
-  return documentRepo.create({
-    candidateId: CANDIDATE_ID,
-    documentType: DocumentType.RESUME,
-    fileName: 'resume.pdf',
-    storageKey: 'keys/resume.pdf',
-    rawText: 'Experienced software engineer with TypeScript expertise...',
-  });
-}
+const mockDocument = {
+  id: 'doc-1',
+  candidateId: CANDIDATE_ID,
+  documentType: DocumentType.RESUME,
+  fileName: 'resume.pdf',
+  storageKey: 'workspaces/ws-1/candidates/cand-1/documents/resume.pdf',
+  rawText: 'Experienced software engineer with TypeScript expertise...',
+  uploadedAt: new Date(),
+};
+
+const mockSummary = {
+  id: SUMMARY_ID,
+  candidateId: CANDIDATE_ID,
+  status: SummaryStatus.PENDING,
+  score: null,
+  strengths: null,
+  concerns: null,
+  summary: null,
+  recommendedDecision: null,
+  provider: null,
+  promptVersion: null,
+  errorMessage: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 describe('SummaryProcessor', () => {
+  let processor: SummaryProcessor;
+  let summaryRepo: jest.Mocked<ISummaryRepository>;
+  let documentRepo: jest.Mocked<IDocumentRepository>;
+  let fakeProvider: FakeSummarizationProvider;
+
+  beforeEach(async () => {
+    summaryRepo = createMockSummaryRepository();
+    documentRepo = createMockDocumentRepository();
+    fakeProvider = new FakeSummarizationProvider();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SummaryProcessor,
+        { provide: SUMMARIZATION_PROVIDER, useValue: fakeProvider },
+        { provide: SUMMARY_REPOSITORY, useValue: summaryRepo },
+        { provide: DOCUMENT_REPOSITORY, useValue: documentRepo },
+      ],
+    }).compile();
+
+    processor = module.get<SummaryProcessor>(SummaryProcessor);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
 
   it('processes a job successfully and marks summary as COMPLETED', async () => {
-    const { processor, summaryRepo, documentRepo } = await buildProcessor();
-    const summary = await summaryRepo.create({
-      candidateId: CANDIDATE_ID,
-      status: SummaryStatus.PENDING,
-    });
-    await seedDoc(documentRepo);
+    summaryRepo.findById.mockResolvedValue(mockSummary);
+    documentRepo.findByCandidateId.mockResolvedValue([mockDocument]);
 
     await processor.handleGenerateSummary(
-      makeJob({ summaryId: summary.id, candidateId: CANDIDATE_ID }),
+      makeJob({ summaryId: SUMMARY_ID, candidateId: CANDIDATE_ID })
     );
 
-    const updated = await summaryRepo.findById(summary.id);
-    expect(updated!.status).toBe(SummaryStatus.COMPLETED);
-    expect(updated!.score).toBe(85);
-    expect(updated!.strengths).toEqual(FAKE_OUTPUT.strengths);
-    expect(updated!.concerns).toEqual(FAKE_OUTPUT.concerns);
-    expect(updated!.summary).toBe(FAKE_OUTPUT.summary);
-    expect(updated!.recommendedDecision).toBe('yes');
-    expect(updated!.provider).toBe('fake-provider');
-    expect(updated!.promptVersion).toBe('v1');
-    expect(updated!.errorMessage).toBeNull();
+    expect(summaryRepo.update).toHaveBeenCalledWith(SUMMARY_ID, {
+      status: SummaryStatus.COMPLETED,
+      score: 85,
+      strengths: FAKE_OUTPUT.strengths,
+      concerns: FAKE_OUTPUT.concerns,
+      summary: FAKE_OUTPUT.summary,
+      recommendedDecision: 'yes',
+      provider: 'fake-provider',
+      promptVersion: 'v1',
+      errorMessage: null,
+    });
   });
 
   it('marks summary as FAILED when no documents exist', async () => {
-    const { processor, summaryRepo } = await buildProcessor();
-    const summary = await summaryRepo.create({
-      candidateId: CANDIDATE_ID,
-      status: SummaryStatus.PENDING,
-    });
-    // No documents seeded
+    summaryRepo.findById.mockResolvedValue(mockSummary);
+    documentRepo.findByCandidateId.mockResolvedValue([]);
 
     await processor.handleGenerateSummary(
-      makeJob({ summaryId: summary.id, candidateId: CANDIDATE_ID }),
+      makeJob({ summaryId: SUMMARY_ID, candidateId: CANDIDATE_ID })
     );
 
-    const updated = await summaryRepo.findById(summary.id);
-    expect(updated!.status).toBe(SummaryStatus.FAILED);
-    expect(updated!.errorMessage).toBe('No documents found for candidate');
+    expect(summaryRepo.update).toHaveBeenCalledWith(SUMMARY_ID, {
+      status: SummaryStatus.FAILED,
+      errorMessage: 'No documents found for candidate',
+    });
   });
 
   it('marks summary as FAILED when provider throws', async () => {
-    const fakeProvider = new FakeSummarizationProvider();
     fakeProvider.shouldFail = true;
-
-    const { processor, summaryRepo, documentRepo } = await buildProcessor(fakeProvider);
-    const summary = await summaryRepo.create({
-      candidateId: CANDIDATE_ID,
-      status: SummaryStatus.PENDING,
-    });
-    await seedDoc(documentRepo);
+    summaryRepo.findById.mockResolvedValue(mockSummary);
+    documentRepo.findByCandidateId.mockResolvedValue([mockDocument]);
 
     await processor.handleGenerateSummary(
-      makeJob({ summaryId: summary.id, candidateId: CANDIDATE_ID }),
+      makeJob({ summaryId: SUMMARY_ID, candidateId: CANDIDATE_ID })
     );
 
-    const updated = await summaryRepo.findById(summary.id);
-    expect(updated!.status).toBe(SummaryStatus.FAILED);
-    expect(updated!.errorMessage).toBe('Provider API down');
+    expect(summaryRepo.update).toHaveBeenCalledWith(SUMMARY_ID, {
+      status: SummaryStatus.FAILED,
+      errorMessage: 'Provider API down',
+    });
   });
 
   it('skips silently when summary record does not exist', async () => {
-    const { processor, summaryRepo } = await buildProcessor();
+    summaryRepo.findById.mockResolvedValue(null);
 
     await processor.handleGenerateSummary(
-      makeJob({ summaryId: 'no-such-id', candidateId: CANDIDATE_ID }),
+      makeJob({ summaryId: 'no-such-id', candidateId: CANDIDATE_ID })
     );
 
-    // Nothing was persisted
-    const all = await summaryRepo.findByCandidateId(CANDIDATE_ID);
-    expect(all).toHaveLength(0);
+    expect(summaryRepo.update).not.toHaveBeenCalled();
   });
 
   it('calls the provider with all candidate documents', async () => {
-    const fakeProvider = new FakeSummarizationProvider();
-    const { processor, summaryRepo, documentRepo } = await buildProcessor(fakeProvider);
-    const summary = await summaryRepo.create({
-      candidateId: CANDIDATE_ID,
-      status: SummaryStatus.PENDING,
-    });
-    await documentRepo.create({
-      candidateId: CANDIDATE_ID,
-      documentType: DocumentType.RESUME,
-      fileName: 'resume.pdf',
-      storageKey: 'k1',
-      rawText: 'Resume content',
-    });
-    await documentRepo.create({
-      candidateId: CANDIDATE_ID,
-      documentType: DocumentType.COVER_LETTER,
-      fileName: 'cover.pdf',
-      storageKey: 'k2',
-      rawText: 'Cover letter content',
-    });
+    summaryRepo.findById.mockResolvedValue(mockSummary);
+    documentRepo.findByCandidateId.mockResolvedValue([
+      {
+        ...mockDocument,
+        documentType: DocumentType.RESUME,
+        rawText: 'Resume content',
+      },
+      {
+        ...mockDocument,
+        id: 'doc-2',
+        documentType: DocumentType.COVER_LETTER,
+        rawText: 'Cover letter content',
+      },
+    ]);
 
     await processor.handleGenerateSummary(
-      makeJob({ summaryId: summary.id, candidateId: CANDIDATE_ID }),
+      makeJob({ summaryId: SUMMARY_ID, candidateId: CANDIDATE_ID })
     );
 
     expect(fakeProvider.callCount).toBe(1);
-    const updated = await summaryRepo.findById(summary.id);
-    expect(updated!.status).toBe(SummaryStatus.COMPLETED);
+    expect(summaryRepo.update).toHaveBeenCalledWith(
+      SUMMARY_ID,
+      expect.objectContaining({
+        status: SummaryStatus.COMPLETED,
+      })
+    );
   });
 });
