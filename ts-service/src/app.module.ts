@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bull';
 
 import { AuthModule } from './auth/auth.module';
 import { defaultDatabaseUrl, getTypeOrmOptions } from './config/typeorm.options';
@@ -19,6 +20,17 @@ import { SummariesModule } from './summaries/summaries.module';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) =>
         getTypeOrmOptions(configService.get<string>('DATABASE_URL') ?? defaultDatabaseUrl),
+    }),
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        redis: configService.get<string>('REDIS_URL') ?? 'redis://localhost:6379',
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 2000 },
+        },
+      }),
+      inject: [ConfigService],
     }),
     AuthModule,
     HealthModule,

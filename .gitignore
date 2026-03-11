@@ -41,3 +41,4 @@ tmp/
 # Local storage
 data/
 postgres-data/
+uploads/

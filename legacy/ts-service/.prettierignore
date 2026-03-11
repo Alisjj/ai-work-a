@@ -1,6 +1,0 @@
-node_modules
-dist
-.venv
-coverage
-*.min.js
-yarn.lock

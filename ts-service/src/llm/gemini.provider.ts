@@ -26,7 +26,7 @@ export class GeminiSummarizationProvider implements SummarizationProvider {
   }
 
   async generateCandidateSummary(input: CandidateSummaryInput): Promise<CandidateSummaryResult> {
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const docBlock = input.documents
       .map((d, i) => `--- Document ${i + 1}: ${d.documentType} (${d.fileName}) ---\n${d.rawText}`)
@@ -103,6 +103,6 @@ The JSON must conform to this exact schema:
   }
 
   get providerName(): string {
-    return 'gemini-1.5-flash';
+    return 'gemini-2.5-flash';
   }
 }

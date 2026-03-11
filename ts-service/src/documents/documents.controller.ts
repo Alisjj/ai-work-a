@@ -11,16 +11,22 @@ import {
   Inject,
   NotFoundException,
 } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiSecurity } from '@nestjs/swagger';
 import { Request } from 'express';
 import { randomUUID } from 'crypto';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 import { WorkspaceGuard } from '../auth/guards/workspace.guard';
+import { AuthUser } from '../auth/auth-user.decorator';
+import { AuthUser as AuthUserType } from '../auth/auth.types';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { DOCUMENT_REPOSITORY, IDocumentRepository } from '../common/repositories/document.repository';
 import { CANDIDATE_REPOSITORY, ICandidateRepository } from '../common/repositories/candidate.repository';
 
-type AuthedRequest = Request & { workspaceId: string };
-
+@ApiTags('documents')
+@ApiSecurity('x-user-id')
+@ApiSecurity('x-workspace-id')
 @Controller('candidates/:candidateId/documents')
 @UseGuards(WorkspaceGuard)
 export class DocumentsController {
@@ -33,22 +39,27 @@ export class DocumentsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Upload a candidate document' })
+  @ApiResponse({ status: 201, description: 'Document uploaded successfully' })
+  @ApiResponse({ status: 404, description: 'Candidate not found' })
   async createDocument(
-    @Req() req: AuthedRequest,
+    @AuthUser() user: AuthUserType,
     @Param('candidateId', ParseUUIDPipe) candidateId: string,
     @Body() dto: CreateDocumentDto,
   ) {
-    // Verify candidate exists and belongs to workspace
     const candidate = await this.candidateRepo.findByIdAndWorkspace(
       candidateId,
-      req.workspaceId,
+      user.workspaceId,
     );
     if (!candidate) {
       throw new NotFoundException(`Candidate ${candidateId} not found`);
     }
 
-    // Generate a storage key (in real app, this would be S3 key or similar)
-    const storageKey = `candidates/${candidateId}/documents/${randomUUID()}-${dto.fileName}`;
+    const uploadDir = path.join(process.cwd(), 'uploads', candidateId);
+    await fs.mkdir(uploadDir, { recursive: true });
+
+    const storageKey = path.join(uploadDir, `${randomUUID()}-${dto.fileName}`);
+    await fs.writeFile(storageKey, dto.rawText, 'utf8');
 
     const document = await this.documentRepo.create({
       candidateId,

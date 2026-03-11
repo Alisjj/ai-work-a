@@ -1,27 +1,23 @@
-# TalentFlow TypeScript Service Starter
+# TalentFlow TypeScript Service
 
-NestJS starter service for the backend assessment.
+NestJS service for the Candidate Document Intake + Summary Workflow assessment.
 
-This service includes:
+## Features
 
-- Nest bootstrap with global validation
-- TypeORM + migration setup
-- Fake auth context (`x-user-id`, `x-workspace-id`)
-- Tiny workspace-scoped sample module
-- Queue abstraction module
-- LLM provider abstraction with a fake summarization provider
-- Jest test setup
-
-The assessment-specific candidate document and summary workflow is intentionally not implemented.
+- Upload candidate documents (resume, cover letter) with local file storage
+- Async summary generation using Bull queue + Redis
+- LLM-powered candidate evaluation (Gemini)
+- Workspace-scoped access control
+- TypeORM with PostgreSQL
 
 ## Prerequisites
 
 - Node.js 22+
-- npm
-- PostgreSQL running from repository root:
+- PostgreSQL (via Docker)
+- Redis (via Docker)
 
 ```bash
-docker compose up -d postgres
+docker compose up -d postgres redis
 ```
 
 ## Setup
@@ -32,52 +28,62 @@ npm install
 cp .env.example .env
 ```
 
-## Environment
+## Environment Variables
 
-- `PORT`
-- `DATABASE_URL`
-- `NODE_ENV`
-- `GEMINI_API_KEY` (leave blank unless implementing a real provider)
-
-Do not commit API keys or secrets.
-
-Candidates may create a free Gemini API key through Google AI Studio for the full assessment implementation.
+| Variable | Description |
+|----------|-------------|
+| `PORT` | Server port (default: 3000) |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `REDIS_URL` | Redis connection string (default: redis://localhost:6379) |
+| `GEMINI_API_KEY` | Google AI Studio API key for real LLM calls |
 
 ## Run Migrations
 
 ```bash
-cd ts-service
 npm run migration:run
 ```
 
 ## Run Service
 
 ```bash
-cd ts-service
 npm run start:dev
 ```
 
 ## Run Tests
 
 ```bash
-cd ts-service
 npm test
-npm run test:e2e
 ```
 
-## Fake Auth Headers
+## API Endpoints
 
-Sample endpoints in this starter are protected by a fake local auth guard.
-Include these headers in requests:
+### Documents
+- `POST /candidates/:candidateId/documents` - Upload document
 
-- `x-user-id`: any non-empty string (example: `user-1`)
-- `x-workspace-id`: workspace identifier used for scoping (example: `workspace-1`)
+### Summaries
+- `POST /candidates/:candidateId/summaries/generate` - Queue summary generation (async)
+- `GET /candidates/:candidateId/summaries` - List summaries
+- `GET /candidates/:candidateId/summaries/:summaryId` - Get single summary
 
-## Layout Highlights
+All endpoints require headers: `x-user-id` and `x-workspace-id`
 
-- `src/auth/`: fake auth guard, user decorator, auth types
-- `src/entities/`: starter entities
-- `src/sample/`: tiny example module (controller/service/dto)
-- `src/queue/`: in-memory queue abstraction
-- `src/llm/`: provider interface + fake provider
-- `src/migrations/`: TypeORM migration files
+## LLM Provider
+
+- Uses **Gemini 2.5 Flash** via Google AI Studio
+- Set `GEMINI_API_KEY` in `.env` for real LLM calls
+- Falls back to fake provider if no key configured
+- See `src/llm/` for provider abstraction
+
+## Design Decisions
+
+- **Storage**: Local filesystem (`uploads/{candidateId}/`) with UUID-prefixed filenames
+- **Queue**: Bull + Redis for async job processing
+- **Access Control**: Workspace-scoped via `x-workspace-id` header
+- **Separation**: Controller → Service → Repository pattern
+
+## Assumptions & Limitations
+
+- Redis must be running for queue to process jobs
+- New workspaces must be seeded via `/sample/candidates` first
+- Document raw text is stored in DB; actual files stored locally
+- No JWT auth - uses fake header-based auth for assessment purposes

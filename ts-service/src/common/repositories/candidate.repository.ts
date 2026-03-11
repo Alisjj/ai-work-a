@@ -69,8 +69,6 @@ export class CandidateRepository implements ICandidateRepository {
       name: data.name,
       email: data.email ?? null,
     });
-    // Don't set the workspace relation, just the ID
-    delete (entity as any).workspace;
     const saved = await this.repository.save(entity);
     return this.toRecord(saved);
   }

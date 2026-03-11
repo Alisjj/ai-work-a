@@ -2,14 +2,16 @@ import {
   Body,
   Controller,
   Get,
+  Inject,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
-  Req,
   UseGuards,
 } from "@nestjs/common";
-import { Request } from "express";
 
+import { AuthUser } from "../auth/auth-user.decorator";
+import { AuthUser as AuthUserType } from "../auth/auth.types";
 import { WorkspaceGuard } from "../auth/guards/workspace.guard";
 import { CreateCandidateDto } from "./dto/create-candidate.dto";
 import {
@@ -17,9 +19,6 @@ import {
   ICandidateRepository,
   CandidateRecord,
 } from "../common/repositories/candidate.repository";
-import { Inject } from "@nestjs/common";
-
-type AuthedRequest = Request & { workspaceId: string };
 
 @Controller("candidates")
 @UseGuards(WorkspaceGuard)
@@ -27,36 +26,38 @@ export class CandidatesController {
   constructor(
     @Inject(CANDIDATE_REPOSITORY)
     private readonly candidateRepo: ICandidateRepository,
-  ) {}
+  ) { }
 
   @Post()
   async createCandidate(
-    @Req() req: AuthedRequest,
+    @AuthUser() user: AuthUserType,
     @Body() dto: CreateCandidateDto,
   ): Promise<CandidateRecord> {
     return this.candidateRepo.create({
-      workspaceId: req.workspaceId,
+      workspaceId: user.workspaceId,
       name: dto.name,
       email: dto.email,
     });
   }
 
   @Get()
-  async listCandidates(@Req() req: AuthedRequest): Promise<CandidateRecord[]> {
-    return this.candidateRepo.findByWorkspace(req.workspaceId);
+  async listCandidates(
+    @AuthUser() user: AuthUserType,
+  ): Promise<CandidateRecord[]> {
+    return this.candidateRepo.findByWorkspace(user.workspaceId);
   }
 
   @Get(":id")
   async getCandidate(
-    @Req() req: AuthedRequest,
+    @AuthUser() user: AuthUserType,
     @Param("id", ParseUUIDPipe) id: string,
   ): Promise<CandidateRecord> {
     const candidate = await this.candidateRepo.findByIdAndWorkspace(
       id,
-      req.workspaceId,
+      user.workspaceId,
     );
     if (!candidate) {
-      throw new Error(`Candidate ${id} not found`);
+      throw new NotFoundException(`Candidate ${id} not found`);
     }
     return candidate;
   }
