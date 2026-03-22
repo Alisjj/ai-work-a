@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -37,15 +37,34 @@ class PointOut(BaseModel):
 class BriefingCreate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    company_name: str = Field(validation_alias="companyName")
+    company_name: str
     ticker: str
     sector: str
-    analyst_name: str = Field(validation_alias="analystName")
+    analyst_name: str
     summary: str
     recommendation: str
-    key_points: list[str] = Field(validation_alias="keyPoints")
+    key_points: list[str]
     risks: list[str]
     metrics: list[MetricIn] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_field_names(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        normalized = dict(data)
+        field_map = {
+            "companyName": "company_name",
+            "analystName": "analyst_name",
+            "keyPoints": "key_points",
+        }
+
+        for source_name, target_name in field_map.items():
+            if source_name in normalized and target_name not in normalized:
+                normalized[target_name] = normalized.pop(source_name)
+
+        return normalized
 
     @field_validator("company_name", "summary", "recommendation", "sector", "analyst_name")
     @classmethod

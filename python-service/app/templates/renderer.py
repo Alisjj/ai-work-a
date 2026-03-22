@@ -1,6 +1,6 @@
 """Template rendering utilities."""
 
-import os
+from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -10,18 +10,14 @@ class TemplateRenderer:
 
     def __init__(self) -> None:
         self._env: Environment | None = None
-
-    @property
-    def _templates_dir(self) -> str:
-        """Get the path to the templates directory."""
-        return os.path.join(os.path.dirname(__file__), "briefing_report.html")
+        self._templates_dir = Path(__file__).resolve().parent
 
     @property
     def env(self) -> Environment:
         """Lazy-load the Jinja2 environment."""
         if self._env is None:
             self._env = Environment(
-                loader=FileSystemLoader(os.path.dirname(self._templates_dir)),
+                loader=FileSystemLoader(str(self._templates_dir)),
                 autoescape=select_autoescape(["html"]),
             )
         return self._env
@@ -40,5 +36,4 @@ class TemplateRenderer:
         return template.render(report=report)
 
 
-# Global renderer instance
 renderer = TemplateRenderer()

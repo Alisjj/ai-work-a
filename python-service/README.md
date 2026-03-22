@@ -82,15 +82,29 @@ source .venv/bin/activate
 python -m pytest
 ```
 
+## Quality Checks
+
+Project-level tool configuration now lives in `pyproject.toml`.
+
+If you install the tools in your venv, the intended checks are:
+
+```bash
+cd python-service
+source .venv/bin/activate
+ruff check .
+pyright
+```
+
 ## Project Layout
 
-- `app/main.py`: FastAPI bootstrap and router wiring
+- `app/main.py`: FastAPI app factory and ASGI entrypoint
 - `app/config.py`: environment config
 - `app/db/`: SQLAlchemy session management and migration runner
 - `db/migrations/`: SQL migration files
+- `app/briefings/`: briefing feature package (API, service, queries, presenters, exception handlers)
+- `app/sample_items/`: sample-items feature package (API, service, queries, presenters)
 - `app/models/`: ORM models
 - `app/schemas/`: Pydantic request/response schemas
-- `app/services/`: service-layer logic and template helpers
-- `app/api/`: route handlers
+- `app/api/`: shared/simple route handlers
 - `app/templates/`: Jinja templates
 - `tests/`: test suite
