@@ -1,31 +1,10 @@
-import { Injectable, Inject } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
-import { Candidate } from "src/entities/candidate.entity";
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 
-export const CANDIDATE_REPOSITORY = "CANDIDATE_REPOSITORY";
-
-export interface CandidateRecord {
-  id: string;
-  workspaceId: string;
-  name: string;
-  email: string | null;
-  createdAt: Date;
-}
-
-export interface ICandidateRepository {
-  findById(id: string): Promise<CandidateRecord | null>;
-  findByIdAndWorkspace(
-    id: string,
-    workspaceId: string,
-  ): Promise<CandidateRecord | null>;
-  findByWorkspace(workspaceId: string): Promise<CandidateRecord[]>;
-  create(data: {
-    workspaceId: string;
-    name: string;
-    email?: string | null;
-  }): Promise<CandidateRecord>;
-}
+import { ICandidateRepository } from '../../candidates/candidate-repository.interface';
+import { CandidateRecord } from '../../candidates/candidates.types';
+import { Candidate } from '../../entities/candidate.entity';
 
 @Injectable()
 export class CandidateRepository implements ICandidateRepository {
@@ -54,7 +33,7 @@ export class CandidateRepository implements ICandidateRepository {
   async findByWorkspace(workspaceId: string): Promise<CandidateRecord[]> {
     const entities = await this.repository.find({
       where: { workspaceId },
-      order: { createdAt: "DESC" },
+      order: { createdAt: 'DESC' },
     });
     return entities.map((e) => this.toRecord(e));
   }

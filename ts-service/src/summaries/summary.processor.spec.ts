@@ -1,15 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { DOCUMENT_REPOSITORY, IDocumentRepository } from '../documents/document-repository.interface';
+import { DocumentRecord } from '../documents/documents.types';
 import { SummaryProcessor } from './summary.processor';
 import { SUMMARY_JOB, SummaryJobPayload } from './queue.constants';
 import { SUMMARIZATION_PROVIDER } from '../llm/summarization-provider.interface';
-import {
-    DOCUMENT_REPOSITORY,
-    IDocumentRepository,
-    DocumentRecord,
-} from '../common/repositories/document.repository';
-import { SUMMARY_REPOSITORY, ISummaryRepository, SummaryRecord } from '../common/repositories/summary.repository';
+import { SUMMARY_REPOSITORY, ISummaryRepository } from './summary-repository.interface';
 import { SummaryStatus, RecommendedDecision } from '../entities/candidate-summary.entity';
+import { SummaryRecord } from './summaries.types';
 import { FakeSummarizationProvider } from '../llm/fake-summarization.provider';
 import { Job } from 'bull';
 
@@ -41,8 +39,15 @@ const makeSummaryRecord = (override: Partial<SummaryRecord> = {}): SummaryRecord
     ...override,
 });
 
-const makeJob = (data: SummaryJobPayload): Job<SummaryJobPayload> =>
-    ({ data } as Job<SummaryJobPayload>);
+const makeJob = (
+    data: SummaryJobPayload,
+    options: { attempts?: number; attemptsMade?: number } = {},
+): Job<SummaryJobPayload> =>
+    ({
+        data,
+        opts: { attempts: options.attempts ?? 1 },
+        attemptsMade: options.attemptsMade ?? 0,
+    } as Job<SummaryJobPayload>);
 
 describe('SummaryProcessor', () => {
     let processor: SummaryProcessor;
@@ -128,7 +133,7 @@ describe('SummaryProcessor', () => {
             });
         });
 
-        it('marks summary as FAILED when the provider throws', async () => {
+        it('marks summary as FAILED and rethrows on the final provider failure', async () => {
             const summary = makeSummaryRecord();
             const document = makeDocumentRecord();
             summaryRepo.findById.mockResolvedValue(summary);
@@ -146,9 +151,14 @@ describe('SummaryProcessor', () => {
                 makeSummaryRecord({ status: SummaryStatus.FAILED, errorMessage: 'LLM timeout' }),
             );
 
-            await processor.handleGenerateSummary(
-                makeJob({ summaryId: 'sum-1', candidateId: 'cand-1' }),
-            );
+            await expect(
+                processor.handleGenerateSummary(
+                    makeJob(
+                        { summaryId: 'sum-1', candidateId: 'cand-1' },
+                        { attempts: 3, attemptsMade: 2 },
+                    ),
+                ),
+            ).rejects.toThrow('LLM timeout');
 
             expect(summaryRepo.update).toHaveBeenCalledWith(
                 'sum-1',
@@ -156,6 +166,34 @@ describe('SummaryProcessor', () => {
                     status: SummaryStatus.FAILED,
                     errorMessage: 'LLM timeout',
                 }),
+            );
+        });
+
+        it('rethrows without marking FAILED before the final retry', async () => {
+            const summary = makeSummaryRecord();
+            const document = makeDocumentRecord();
+            summaryRepo.findById.mockResolvedValue(summary);
+            documentRepo.findByCandidateId.mockResolvedValue([document]);
+
+            jest
+                .spyOn(
+                    (processor as any).summarizationProvider,
+                    'generateCandidateSummary',
+                )
+                .mockRejectedValue(new Error('Transient provider issue'));
+
+            await expect(
+                processor.handleGenerateSummary(
+                    makeJob(
+                        { summaryId: 'sum-1', candidateId: 'cand-1' },
+                        { attempts: 3, attemptsMade: 0 },
+                    ),
+                ),
+            ).rejects.toThrow('Transient provider issue');
+
+            expect(summaryRepo.update).not.toHaveBeenCalledWith(
+                'sum-1',
+                expect.objectContaining({ status: SummaryStatus.FAILED }),
             );
         });
 

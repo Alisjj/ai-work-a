@@ -2,15 +2,21 @@ import { Processor, Process } from '@nestjs/bull';
 import { Inject, Logger } from '@nestjs/common';
 import { Job } from 'bull';
 
-import { SUMMARY_QUEUE, SUMMARY_JOB, SummaryJobPayload } from './queue.constants';
+import { DOCUMENT_REPOSITORY, IDocumentRepository } from '../documents/document-repository.interface';
+import { DocumentRecord } from '../documents/documents.types';
+import { SUMMARY_REPOSITORY, ISummaryRepository } from './summary-repository.interface';
+import {
+  SUMMARY_QUEUE,
+  SUMMARY_JOB,
+  SUMMARY_PROCESSOR_CONCURRENCY,
+  SummaryJobPayload,
+} from './queue.constants';
 import { SUMMARIZATION_PROVIDER, SummarizationProvider } from '../llm/summarization-provider.interface';
-import { DOCUMENT_REPOSITORY, IDocumentRepository, DocumentRecord } from '../common/repositories/document.repository';
-import { SUMMARY_REPOSITORY, ISummaryRepository } from '../common/repositories/summary.repository';
 import { SummaryStatus, RecommendedDecision } from '../entities/candidate-summary.entity';
 
 /**
  * SummaryProcessor - Handles background job processing for summary generation
- * Concurrency: 5 jobs max to prevent API rate limiting and resource exhaustion
+ * Concurrency is capped to avoid overwhelming the LLM provider.
  */
 @Processor(SUMMARY_QUEUE)
 export class SummaryProcessor {
@@ -25,7 +31,7 @@ export class SummaryProcessor {
     private readonly documentRepo: IDocumentRepository,
   ) {}
 
-  @Process(SUMMARY_JOB.GENERATE)
+  @Process({ name: SUMMARY_JOB.GENERATE, concurrency: SUMMARY_PROCESSOR_CONCURRENCY })
   async handleGenerateSummary(job: Job<SummaryJobPayload>): Promise<void> {
     const { summaryId, candidateId } = job.data;
     this.logger.log(`Processing summary ${summaryId} for candidate ${candidateId}`);
@@ -70,11 +76,22 @@ export class SummaryProcessor {
       this.logger.log(`Summary ${summaryId} completed`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      this.logger.error(`Summary ${summaryId} failed: ${message}`);
-      await this.summaryRepo.update(summaryId, {
-        status: SummaryStatus.FAILED,
-        errorMessage: message,
-      });
+      const attempts = typeof job.opts.attempts === 'number' ? job.opts.attempts : 1;
+      const currentAttempt = job.attemptsMade + 1;
+      const isFinalAttempt = currentAttempt >= attempts;
+
+      this.logger.error(
+        `Summary ${summaryId} failed on attempt ${currentAttempt}/${attempts}: ${message}`,
+      );
+
+      if (isFinalAttempt) {
+        await this.summaryRepo.update(summaryId, {
+          status: SummaryStatus.FAILED,
+          errorMessage: message,
+        });
+      }
+
+      throw err instanceof Error ? err : new Error(message);
     }
   }
 }

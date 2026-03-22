@@ -1,45 +1,9 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { CandidateSummary, SummaryStatus, RecommendedDecision } from '../../entities/candidate-summary.entity';
-
-// Re-export from candidate and document repositories for convenience
-export {
-  CANDIDATE_REPOSITORY,
-  ICandidateRepository,
-  CandidateRecord,
-} from './candidate.repository';
-export {
-  DOCUMENT_REPOSITORY,
-  IDocumentRepository,
-  DocumentRecord,
-} from './document.repository';
-
-export const SUMMARY_REPOSITORY = 'SUMMARY_REPOSITORY';
-
-export interface SummaryRecord {
-  id: string;
-  candidateId: string;
-  status: SummaryStatus;
-  score: number | null;
-  strengths: string[] | null;
-  concerns: string[] | null;
-  summary: string | null;
-  recommendedDecision: RecommendedDecision | null;
-  provider: string | null;
-  promptVersion: string | null;
-  errorMessage: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface ISummaryRepository {
-  findById(id: string): Promise<SummaryRecord | null>;
-  findByIdAndCandidateId(id: string, candidateId: string): Promise<SummaryRecord | null>;
-  findByCandidateId(candidateId: string): Promise<SummaryRecord[]>;
-  create(data: { candidateId: string; status: SummaryStatus }): Promise<SummaryRecord>;
-  update(id: string, data: Partial<SummaryRecord>): Promise<SummaryRecord | null>;
-}
+import { ISummaryRepository } from '../../summaries/summary-repository.interface';
+import { SummaryRecord } from '../../summaries/summaries.types';
+import { CandidateSummary, SummaryStatus } from '../../entities/candidate-summary.entity';
 
 @Injectable()
 export class SummaryRepository implements ISummaryRepository {

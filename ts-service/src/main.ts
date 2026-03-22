@@ -5,10 +5,12 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
 import { QueryFailedFilter } from './common/filters/query-failed.filter';
+import { getAppEnvironment } from './config/env';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
+  const environment = getAppEnvironment(configService);
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -68,8 +70,7 @@ async function bootstrap(): Promise<void> {
   
   SwaggerModule.setup('api', app, document);
 
-  const port = Number(configService.get('PORT') ?? 3000);
-  await app.listen(port);
+  await app.listen(environment.PORT);
 }
 
 bootstrap();

@@ -4,39 +4,44 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 
 import { AuthModule } from './auth/auth.module';
-import { defaultDatabaseUrl, getTypeOrmOptions } from './config/typeorm.options';
+import { getAppEnvironment, validateEnvironment } from './config/env';
+import { getTypeOrmOptions } from './config/typeorm.options';
 import { HealthModule } from './health/health.module';
 import { LlmModule } from './llm/llm.module';
-import { QueueModule } from './queue/queue.module';
-import { SampleModule } from './sample/sample.module';
 import { CandidatesModule } from './candidates/candidates.module';
 import { DocumentsModule } from './documents/documents.module';
 import { SummariesModule } from './summaries/summaries.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      cache: true,
+      validate: validateEnvironment,
+    }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) =>
-        getTypeOrmOptions(configService.get<string>('DATABASE_URL') ?? defaultDatabaseUrl),
+        getTypeOrmOptions(getAppEnvironment(configService).DATABASE_URL),
     }),
     BullModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        redis: configService.get<string>('REDIS_URL') ?? 'redis://localhost:6379',
-        defaultJobOptions: {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 2000 },
-        },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const environment = getAppEnvironment(configService);
+
+        return {
+          redis: environment.REDIS_URL,
+          defaultJobOptions: {
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 2000 },
+          },
+        };
+      },
       inject: [ConfigService],
     }),
     AuthModule,
     HealthModule,
-    QueueModule,
     LlmModule,
-    SampleModule,
     CandidatesModule,
     DocumentsModule,
     SummariesModule,

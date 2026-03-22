@@ -2,18 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bull';
 import { NotFoundException } from '@nestjs/common';
 
+import { CandidatesService } from '../candidates/candidates.service';
+import { CandidateRecord } from '../candidates/candidates.types';
+import { SUMMARY_REPOSITORY, ISummaryRepository } from './summary-repository.interface';
 import { SummariesService } from './summaries.service';
-import {
-    CANDIDATE_REPOSITORY,
-    ICandidateRepository,
-    CandidateRecord,
-} from '../common/repositories/candidate.repository';
-import {
-    SUMMARY_REPOSITORY,
-    ISummaryRepository,
-    SummaryRecord,
-} from '../common/repositories/summary.repository';
 import { SummaryStatus } from '../entities/candidate-summary.entity';
+import { SummaryRecord } from './summaries.types';
 import { SUMMARY_QUEUE, SUMMARY_JOB } from './queue.constants';
 
 const makeCandidateRecord = (override: Partial<CandidateRecord> = {}): CandidateRecord => ({
@@ -45,11 +39,8 @@ const makeSummaryRecord = (override: Partial<SummaryRecord> = {}): SummaryRecord
 describe('SummariesService', () => {
     let service: SummariesService;
 
-    const candidateRepo: jest.Mocked<ICandidateRepository> = {
-        findById: jest.fn(),
-        findByIdAndWorkspace: jest.fn(),
-        findByWorkspace: jest.fn(),
-        create: jest.fn(),
+    const candidatesService = {
+        getCandidate: jest.fn(),
     };
 
     const summaryRepo: jest.Mocked<ISummaryRepository> = {
@@ -70,7 +61,7 @@ describe('SummariesService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 SummariesService,
-                { provide: CANDIDATE_REPOSITORY, useValue: candidateRepo },
+                { provide: CandidatesService, useValue: candidatesService },
                 { provide: SUMMARY_REPOSITORY, useValue: summaryRepo },
                 { provide: getQueueToken(SUMMARY_QUEUE), useValue: summaryQueue },
             ],
@@ -84,13 +75,13 @@ describe('SummariesService', () => {
             const candidate = makeCandidateRecord();
             const summary = makeSummaryRecord();
 
-            candidateRepo.findByIdAndWorkspace.mockResolvedValue(candidate);
+            candidatesService.getCandidate.mockResolvedValue(candidate);
             summaryRepo.create.mockResolvedValue(summary);
             summaryQueue.add.mockResolvedValue({});
 
             const result = await service.requestGeneration('ws-1', 'cand-1');
 
-            expect(candidateRepo.findByIdAndWorkspace).toHaveBeenCalledWith('cand-1', 'ws-1');
+            expect(candidatesService.getCandidate).toHaveBeenCalledWith('ws-1', 'cand-1');
             expect(summaryRepo.create).toHaveBeenCalledWith({
                 candidateId: 'cand-1',
                 status: SummaryStatus.PENDING,
@@ -104,7 +95,7 @@ describe('SummariesService', () => {
         });
 
         it('throws NotFoundException when candidate not in workspace', async () => {
-            candidateRepo.findByIdAndWorkspace.mockResolvedValue(null);
+            candidatesService.getCandidate.mockRejectedValue(new NotFoundException());
 
             await expect(service.requestGeneration('ws-2', 'cand-1')).rejects.toThrow(
                 NotFoundException,
@@ -119,7 +110,7 @@ describe('SummariesService', () => {
             const candidate = makeCandidateRecord();
             const summaries = [makeSummaryRecord(), makeSummaryRecord({ id: 'sum-2' })];
 
-            candidateRepo.findByIdAndWorkspace.mockResolvedValue(candidate);
+            candidatesService.getCandidate.mockResolvedValue(candidate);
             summaryRepo.findByCandidateId.mockResolvedValue(summaries);
 
             const result = await service.listSummaries('ws-1', 'cand-1');
@@ -129,7 +120,7 @@ describe('SummariesService', () => {
         });
 
         it('throws NotFoundException when candidate not in workspace', async () => {
-            candidateRepo.findByIdAndWorkspace.mockResolvedValue(null);
+            candidatesService.getCandidate.mockRejectedValue(new NotFoundException());
 
             await expect(service.listSummaries('ws-99', 'cand-1')).rejects.toThrow(NotFoundException);
         });
@@ -140,7 +131,7 @@ describe('SummariesService', () => {
             const candidate = makeCandidateRecord();
             const summary = makeSummaryRecord({ status: SummaryStatus.COMPLETED });
 
-            candidateRepo.findByIdAndWorkspace.mockResolvedValue(candidate);
+            candidatesService.getCandidate.mockResolvedValue(candidate);
             summaryRepo.findByIdAndCandidateId.mockResolvedValue(summary);
 
             const result = await service.getSummary('ws-1', 'cand-1', 'sum-1');
@@ -151,7 +142,7 @@ describe('SummariesService', () => {
 
         it('throws NotFoundException when summary not found', async () => {
             const candidate = makeCandidateRecord();
-            candidateRepo.findByIdAndWorkspace.mockResolvedValue(candidate);
+            candidatesService.getCandidate.mockResolvedValue(candidate);
             summaryRepo.findByIdAndCandidateId.mockResolvedValue(null);
 
             await expect(service.getSummary('ws-1', 'cand-1', 'sum-999')).rejects.toThrow(
@@ -160,7 +151,7 @@ describe('SummariesService', () => {
         });
 
         it('throws NotFoundException when candidate not in workspace', async () => {
-            candidateRepo.findByIdAndWorkspace.mockResolvedValue(null);
+            candidatesService.getCandidate.mockRejectedValue(new NotFoundException());
 
             await expect(service.getSummary('ws-2', 'cand-1', 'sum-1')).rejects.toThrow(
                 NotFoundException,

@@ -9,6 +9,8 @@ export interface SummaryJobPayload {
   candidateId: string;
 }
 
+export const SUMMARY_PROCESSOR_CONCURRENCY = 5;
+
 /**
  * Job options for production use
  * - Timeout: 60s for AI API calls

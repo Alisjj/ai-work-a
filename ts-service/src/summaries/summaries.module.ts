@@ -2,25 +2,25 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { CandidatesModule } from '../candidates/candidates.module';
+import { DOCUMENT_REPOSITORY } from '../documents/document-repository.interface';
+import { SUMMARY_REPOSITORY } from './summary-repository.interface';
 import { SummariesController } from './summaries.controller';
 import { SummariesService } from './summaries.service';
 import { SummaryProcessor } from './summary.processor';
-import { SUMMARY_QUEUE } from './queue.constants';
+import { SUMMARY_QUEUE_CONFIG } from './queue.constants';
 import { CandidateSummary } from '../entities/candidate-summary.entity';
-import { SummaryRepository, SUMMARY_REPOSITORY } from '../common/repositories/summary.repository';
-import { DocumentRepository, DOCUMENT_REPOSITORY } from '../common/repositories/document.repository';
-import { CandidateRepository, CANDIDATE_REPOSITORY } from '../common/repositories/candidate.repository';
+import { SummaryRepository } from '../common/repositories/summary.repository';
+import { DocumentRepository } from '../common/repositories/document.repository';
 import { CandidateDocument } from '../entities/candidate-document.entity';
-import { Candidate } from '../entities/candidate.entity';
 import { LlmModule } from '../llm/llm.module';
 
 @Module({
   imports: [
+    CandidatesModule,
     LlmModule,
-    BullModule.registerQueue({
-      name: SUMMARY_QUEUE,
-    }),
-    TypeOrmModule.forFeature([CandidateSummary, CandidateDocument, Candidate]),
+    BullModule.registerQueue(SUMMARY_QUEUE_CONFIG),
+    TypeOrmModule.forFeature([CandidateSummary, CandidateDocument]),
   ],
   controllers: [SummariesController],
   providers: [
@@ -28,7 +28,6 @@ import { LlmModule } from '../llm/llm.module';
     SummariesService,
     SummaryRepository,
     DocumentRepository,
-    CandidateRepository,
     {
       provide: SUMMARY_REPOSITORY,
       useExisting: SummaryRepository,
@@ -36,10 +35,6 @@ import { LlmModule } from '../llm/llm.module';
     {
       provide: DOCUMENT_REPOSITORY,
       useExisting: DocumentRepository,
-    },
-    {
-      provide: CANDIDATE_REPOSITORY,
-      useExisting: CandidateRepository,
     },
   ],
   exports: [SummariesService],

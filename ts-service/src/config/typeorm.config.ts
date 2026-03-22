@@ -1,10 +1,10 @@
-import "dotenv/config";
-import { DataSource } from "typeorm";
+import 'dotenv/config';
+import { DataSource } from 'typeorm';
 
-import { defaultDatabaseUrl, getTypeOrmOptions } from "./typeorm.options";
+import { DEFAULT_DATABASE_URL, validateEnvironment } from './env';
+import { getTypeOrmOptions } from './typeorm.options';
 
-const dataSource = new DataSource(
-  getTypeOrmOptions(process.env.DATABASE_URL ?? defaultDatabaseUrl),
-);
+const environment = validateEnvironment(process.env);
+const dataSource = new DataSource(getTypeOrmOptions(environment.DATABASE_URL ?? DEFAULT_DATABASE_URL));
 
 export default dataSource;

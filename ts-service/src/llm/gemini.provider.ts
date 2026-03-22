@@ -14,18 +14,19 @@ const VALID_DECISIONS = new Set(['strong_yes', 'yes', 'maybe', 'no', 'strong_no'
 @Injectable()
 export class GeminiSummarizationProvider implements SummarizationProvider {
   private readonly logger = new Logger(GeminiSummarizationProvider.name);
-  private readonly genAI: GoogleGenerativeAI;
-  private readonly apiKey: string;
+  private readonly genAI: GoogleGenerativeAI | null;
+  private readonly apiKey: string | null;
 
   constructor(private readonly configService: ConfigService) {
-    this.apiKey = this.configService.get<string>('GEMINI_API_KEY')!;
-    if (!this.apiKey) {
-      throw new Error('GEMINI_API_KEY environment variable is not set');
-    }
-    this.genAI = new GoogleGenerativeAI(this.apiKey);
+    this.apiKey = this.configService.get<string>('GEMINI_API_KEY') ?? null;
+    this.genAI = this.apiKey ? new GoogleGenerativeAI(this.apiKey) : null;
   }
 
   async generateCandidateSummary(input: CandidateSummaryInput): Promise<CandidateSummaryResult> {
+    if (!this.genAI) {
+      throw new Error('Gemini provider is not configured: GEMINI_API_KEY is missing');
+    }
+
     const model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const docBlock = input.documents

@@ -35,6 +35,7 @@ cp .env.example .env
 | `PORT` | Server port (default: 3000) |
 | `DATABASE_URL` | PostgreSQL connection string |
 | `REDIS_URL` | Redis connection string (default: redis://localhost:6379) |
+| `LLM_PROVIDER` | LLM mode: `fake` or `gemini` |
 | `GEMINI_API_KEY` | Google AI Studio API key for real LLM calls |
 
 ## Run Migrations
@@ -69,9 +70,9 @@ All endpoints require headers: `x-user-id` and `x-workspace-id`
 
 ## LLM Provider
 
-- Uses **Gemini 2.5 Flash** via Google AI Studio
-- Set `GEMINI_API_KEY` in `.env` for real LLM calls
-- Falls back to fake provider if no key configured
+- Uses **Gemini 2.5 Flash** via Google AI Studio when `LLM_PROVIDER=gemini`
+- Uses the fake provider when `LLM_PROVIDER=fake`
+- Startup validation requires `GEMINI_API_KEY` when `LLM_PROVIDER=gemini`
 - See `src/llm/` for provider abstraction
 
 ## Design Decisions
@@ -84,6 +85,7 @@ All endpoints require headers: `x-user-id` and `x-workspace-id`
 ## Assumptions & Limitations
 
 - Redis must be running for queue to process jobs
-- New workspaces must be seeded via `/sample/candidates` first
+- Startup validates `PORT`, `DATABASE_URL`, `REDIS_URL`, and the selected LLM mode
+- Runtime candidate/document/summary workflows do not depend on the sample module
 - Document raw text is stored in DB; actual files stored locally
 - No JWT auth - uses fake header-based auth for assessment purposes
